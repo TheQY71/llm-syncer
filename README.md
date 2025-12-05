@@ -14,6 +14,8 @@ A Chrome extension that allows you to broadcast a single prompt to multiple LLM 
 - Claude (claude.ai)
 - Gemini (gemini.google.com)
 - Doubao (doubao.com)
+- DeepSeek (chat.deepseek.com)
+- Kimi (kimi.moonshot.cn, kimi.com, kimi.ai)
 
 ## Installation
 

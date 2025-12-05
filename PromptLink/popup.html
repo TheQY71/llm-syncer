@@ -25,10 +25,27 @@
       font-size: 12px;
       color: gray;
     }
+    #llm-list {
+      margin-top: 10px;
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #eee;
+      padding: 5px;
+    }
+    .llm-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+    .llm-item input {
+      margin-right: 6px;
+    }
   </style>
 </head>
 <body>
   <textarea id="prompt" placeholder="在此输入要同时发给多个 LLM 的问题"></textarea>
+  <div id="llm-list"></div>
   <div>
     <label>
       <input type="checkbox" id="autoSend" />

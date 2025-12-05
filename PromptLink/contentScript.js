@@ -1,3 +1,5 @@
+console.log("[MultiLLM][cs] loaded on", location.href);
+
 function fillForClaude(prompt, autoSend) {
   console.log("[MultiLLM] fillForClaude on", location.href);
 
@@ -264,6 +266,112 @@ function fillForDoubao(prompt, autoSend) {
 }
 
 
+function fillForDeepSeek(prompt, autoSend) {
+  console.log("[MultiLLM] DeepSeek detected, trying to fill prompt");
+
+  const textarea = document.querySelector('textarea[placeholder="Message DeepSeek"]');
+  if (!textarea) {
+    console.log("[MultiLLM] DeepSeek textarea not found");
+    return false;
+  }
+
+  console.log("[MultiLLM] DeepSeek textarea found");
+  textarea.focus();
+  textarea.value = prompt;
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  textarea.dispatchEvent(new Event('change', { bubbles: true }));
+
+  if (autoSend) {
+    setTimeout(() => {
+      // 查找发送按钮，通常是 div[role="button"] 且包含发送图标
+      // 这里尝试查找包含 DeepThink 或 Search 的按钮旁边的发送按钮，或者直接找那个 icon button
+      const sendButton = document.querySelector('div[role="button"].ds-icon-button:not(.ds-icon-button--disabled)');
+      
+      if (sendButton) {
+        console.log("[MultiLLM] DeepSeek send button found, clicking");
+        sendButton.click();
+      } else {
+        console.log("[MultiLLM] DeepSeek send button not found or disabled");
+      }
+    }, 300);
+  }
+  return true;
+}
+
+
+function fillForKimi(prompt, autoSend) {
+  console.log("[MultiLLM] Kimi detected, trying to fill prompt");
+
+  // 1. 找到编辑器
+  let editor = document.querySelector('div.chat-input-editor[contenteditable="true"]');
+  if (!editor) {
+    editor = document.querySelector('[contenteditable="true"][role="textbox"]');
+  }
+
+  if (!editor) {
+    console.log("[MultiLLM] Kimi editor not found");
+    return false;
+  }
+
+  console.log("[MultiLLM] Kimi editor found:", editor);
+
+  // 2. 聚焦
+  editor.focus();
+
+  // 3. 彻底清空旧内容
+  editor.innerHTML = "";
+
+  // 4. 写入一段 <p>，只写一次
+  const p = document.createElement("p");
+  // 多行换行转成 <br>，避免都挤在一行
+  const parts = prompt.split("\n");
+  parts.forEach((line, idx) => {
+    if (idx > 0) p.appendChild(document.createElement("br"));
+    p.appendChild(document.createTextNode(line));
+  });
+  editor.appendChild(p);
+
+  // 5. 触发 input 事件，让 Kimi 的逻辑知道内容变了
+  try {
+    editor.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        inputType: "insertText",
+        data: prompt,
+      })
+    );
+  } catch (e) {
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  console.log("[MultiLLM] Kimi prompt filled");
+
+  // 6. 自动发送（示例：你可以再细化 selector）
+  if (autoSend) {
+    setTimeout(() => {
+      const sendButton =
+        document.querySelector('button[aria-label="发送"]') ||
+        document.querySelector('button[class*="send"]') ||
+        document.querySelector('button[type="submit"]');
+
+      if (!sendButton) {
+        console.log("[MultiLLM] Kimi send button not found");
+        return;
+      }
+
+      if (sendButton.disabled) {
+        console.log("[MultiLLM] Kimi send button disabled");
+        return;
+      }
+
+      console.log("[MultiLLM] Kimi send button found, clicking");
+      sendButton.click();
+    }, 200);
+  }
+
+  return true;
+}
+
 function fillPrompt(prompt, autoSend) {
   const url = window.location.href;
   console.log("[MultiLLM] fillPrompt on", url);
@@ -276,6 +384,10 @@ function fillPrompt(prompt, autoSend) {
     return fillForGemini(prompt, autoSend);
   } else if (/doubao\.com/.test(url)) {
     return fillForDoubao(prompt, autoSend);
+  } else if (/chat\.deepseek\.com/.test(url)) {
+    return fillForDeepSeek(prompt, autoSend);
+  } else if (/kimi\.moonshot\.cn|kimi\.com|kimi\.ai/.test(url)) {
+    return fillForKimi(prompt, autoSend);
   }
 
   // fallback ...
@@ -288,11 +400,15 @@ function fillPrompt(prompt, autoSend) {
 }
 
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === "BROADCAST_PROMPT") {
-    console.log("[MultiLLM] got BROADCAST_PROMPT", msg);
-    const ok = fillPrompt(msg.prompt, msg.autoSend);
-    sendResponse({ ok });
-  }
-  return true;
-});
+// Prevent duplicate listeners
+if (!window.hasMultiLLMListener) {
+  window.hasMultiLLMListener = true;
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type === "BROADCAST_PROMPT") {
+      console.log("[MultiLLM] got BROADCAST_PROMPT", msg);
+      const ok = fillPrompt(msg.prompt, msg.autoSend);
+      sendResponse({ ok });
+    }
+    return true;
+  });
+}
