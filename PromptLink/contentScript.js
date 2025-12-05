@@ -5,6 +5,47 @@ if (window.__multiLLM_cs_installed) {
     window.__multiLLM_cs_installed = true;
     console.log("[MultiLLM][cs] loaded on", location.href);
 
+    // 将多行文本转换为多个 <p>，保留空行
+    const buildParagraphHTML = (text) => {
+        const lines = String(text).replace(/\r/g, "").split("\n");
+        return lines
+            .map((line) => {
+                if (!line) return "<p><br></p>";
+                const escaped = line
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;");
+                return `<p>${escaped}</p>`;
+            })
+            .join("");
+    };
+
+    // 去掉 \r，保留换行等其他字符，用于对比内容是否一致
+    const normalizeText = (v) => (v || "").replace(/\r/g, "");
+
+    // 用 execCommand 按行插入，并在行间插入真实的段落（回车）
+    const insertLinesWithExecCommand = (lines) => {
+        let ok = true;
+        lines.forEach((line, idx) => {
+            try {
+                ok = document.execCommand("insertText", false, line) && ok;
+            } catch (e) {
+                ok = false;
+            }
+            if (idx < lines.length - 1) {
+                try {
+                    const paraOk =
+                        document.execCommand("insertParagraph") ||
+                        document.execCommand("insertLineBreak");
+                    ok = (paraOk || ok) && ok;
+                } catch (e) {
+                    ok = false;
+                }
+            }
+        });
+        return ok;
+    };
+
     function fillForClaude(prompt, autoSend) {
         console.log("[MultiLLM] fillForClaude on", location.href);
 
@@ -38,23 +79,13 @@ if (window.__multiLLM_cs_installed) {
         selection.removeAllRanges();
         selection.addRange(range);
 
-        // 先尝试 execCommand，让 tiptap/ProseMirror 认为是“真实输入”
-        let execOk = false;
-        try {
-            execOk = document.execCommand("insertText", false, prompt);
-        } catch (e) {
-            execOk = false;
-        }
+        // 先尝试 execCommand 分行插入，让 tiptap/ProseMirror 认为是“真实输入”
+        const lines = normalizeText(prompt).split("\n");
+        const execOk = insertLinesWithExecCommand(lines);
 
-        // 如果 execCommand 不 work，就直接塞 HTML 兜底
-        if (!execOk || editor.textContent.trim() !== prompt.trim()) {
-            const escaped = prompt
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/\n/g, "<br>");
-
-            editor.innerHTML = `<p>${escaped}</p>`;
+        // 如果 execCommand 不 work，就直接塞 HTML 兜底（按行拆成多个 <p>，保留换行）
+        if (!execOk || normalizeText(editor.textContent) !== normalizeText(prompt)) {
+            editor.innerHTML = buildParagraphHTML(prompt);
         }
 
         // 5. 触发 input / change 事件，让 React + tiptap 刷新状态
@@ -71,10 +102,20 @@ if (window.__multiLLM_cs_installed) {
         }
         editor.dispatchEvent(new Event("change", { bubbles: true }));
 
+        // tiptap 可能异步规范化 DOM，再次兜底确认换行存在
+        setTimeout(() => {
+            if (normalizeText(editor.textContent) !== normalizeText(prompt)) {
+                console.log("[MultiLLM] Claude enforce final DOM write");
+                editor.innerHTML = buildParagraphHTML(prompt);
+                editor.dispatchEvent(new Event("input", { bubbles: true }));
+                editor.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+        }, 0);
+
         console.log("[MultiLLM] Claude prompt filled");
 
         // 6. 自动发送（可选）
-        if (autoSend) {
+        if (autoSend === true) {
             // Claude 的发送按钮：
             // <button ... aria-label="Send message" ...>  （初始 disabled，输入后会变 enabled）
             const tryClick = () => {
@@ -129,15 +170,8 @@ if (window.__multiLLM_cs_installed) {
         // 2. 聚焦
         editor.focus();
 
-        // 3. 写入内容
-        // 为了兼容 Quill，尽量用 <p> 包一下
-        const escaped = prompt
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/\n/g, "<br>");
-
-        editor.innerHTML = `<p>${escaped}</p>`;
+        // 3. 写入内容：按行拆成多个 <p>，匹配 Quill 的结构
+        editor.innerHTML = buildParagraphHTML(prompt);
 
         // 4. 触发 input / change 事件，让框架知道内容变了
         try {
@@ -158,7 +192,7 @@ if (window.__multiLLM_cs_installed) {
         console.log("[MultiLLM] Gemini prompt filled");
 
         // 5. 自动发送（可选）
-        if (autoSend) {
+        if (autoSend === true) {
             const sendButton =
                 document.querySelector('button[aria-label="Send message"]') ||
                 document.querySelector("button.send-button");
@@ -225,7 +259,7 @@ if (window.__multiLLM_cs_installed) {
         console.log("[MultiLLM] ChatGPT prompt filled");
 
         // 6. 自动发送（可选）
-        if (autoSend) {
+        if (autoSend === true) {
             // 发送按钮有几种状态：voice / send，类名一样，但图标不同
             // 直接点这个圆的提交按钮即可
             const sendButton =
@@ -260,7 +294,7 @@ if (window.__multiLLM_cs_installed) {
         textarea.dispatchEvent(new Event("input", { bubbles: true }));
         textarea.dispatchEvent(new Event("change", { bubbles: true }));
 
-        if (autoSend) {
+        if (autoSend === true) {
             setTimeout(() => {
                 const sendButton = document.querySelector(
                     'button[data-testid="chat_input_send_button"]'
@@ -297,7 +331,7 @@ if (window.__multiLLM_cs_installed) {
         textarea.dispatchEvent(new Event("input", { bubbles: true }));
         textarea.dispatchEvent(new Event("change", { bubbles: true }));
 
-        if (autoSend) {
+        if (autoSend === true) {
             setTimeout(() => {
                 // 查找发送按钮，通常是 div[role="button"] 且包含发送图标
                 // 这里尝试查找包含 DeepThink 或 Search 的按钮旁边的发送按钮，或者直接找那个 icon button
@@ -319,6 +353,22 @@ if (window.__multiLLM_cs_installed) {
         }
         return true;
     }
+
+    // 尝试通过粘贴事件写入，Lexical 对 paste 支持较好
+    const tryPasteText = (editor, text) => {
+        try {
+            const dt = new DataTransfer();
+            dt.setData("text/plain", text);
+            const pasteEvent = new ClipboardEvent("paste", {
+                bubbles: true,
+                cancelable: true,
+                clipboardData: dt,
+            });
+            return editor.dispatchEvent(pasteEvent);
+        } catch (e) {
+            return false;
+        }
+    };
 
     function fillForKimi(prompt, autoSend) {
         console.log("[MultiLLM] Kimi detected, trying to fill prompt");
@@ -342,51 +392,57 @@ if (window.__multiLLM_cs_installed) {
         editor.focus();
 
         const targetText = String(prompt);
-        const normalize = (v) => (v || "").replace(/\r/g, "");
-        const writeDom = () => {
+        const normalizedTarget = normalizeText(targetText);
+        const clearEditor = () => {
+            try {
+                document.execCommand("selectAll", false, null);
+                document.execCommand("delete", false, null);
+            } catch (e) {
+                /* ignore */
+            }
             editor.innerHTML = "";
-            const p = document.createElement("p");
-            const lines = targetText.split("\n");
-            lines.forEach((line, idx) => {
-                if (idx > 0) p.appendChild(document.createElement("br"));
-                p.appendChild(document.createTextNode(line));
-            });
-            editor.appendChild(p);
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(editor);
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        };
+        const writeDom = () => {
+            editor.innerHTML = buildParagraphHTML(targetText);
         };
 
-        // 2. 先选中旧内容，确保后续写入覆盖而不是追加
-        const selection = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(editor);
-        selection.removeAllRanges();
-        selection.addRange(range);
+        // 2. 清空旧内容并写入，避免重复追加
+        const writeByPaste = () => {
+            clearEditor();
+            const ok = tryPasteText(editor, targetText);
+            return ok && normalizeText(editor.textContent) === normalizedTarget;
+        };
 
-        // 3. 尝试用 execCommand 写入（能触发 beforeinput/input，Lexical 更容易同步）
-        let execOk = false;
-        try {
-            execOk = document.execCommand("insertText", false, targetText);
-        } catch (e) {
-            execOk = false;
-        }
+        const writeByExecLines = () => {
+            clearEditor();
+            const lines = normalizedTarget.split("\n");
+            const ok = insertLinesWithExecCommand(lines);
+            return ok && normalizeText(editor.textContent) === normalizedTarget;
+        };
 
-        // 4. 如果 execCommand 没有覆盖成功，就直接重写 DOM
-        const needFallback =
-            !execOk || normalize(editor.textContent) !== normalize(targetText);
-
-        if (needFallback) {
-            console.log("[MultiLLM] Kimi execCommand fallback DOM write");
+        const writeByDom = () => {
+            clearEditor();
             writeDom();
-        }
+            return normalizeText(editor.textContent) === normalizedTarget;
+        };
 
-        // 5. 触发 input / change 事件，仅在 fallback 路径需要补发
-        if (needFallback) {
-            editor.dispatchEvent(new Event("input", { bubbles: true }));
-            editor.dispatchEvent(new Event("change", { bubbles: true }));
-        }
+        let wrote = writeByPaste();
+        if (!wrote) wrote = writeByExecLines();
+        if (!wrote) wrote = writeByDom();
+
+        // 触发 input/change，保证状态刷新
+        editor.dispatchEvent(new Event("input", { bubbles: true }));
+        editor.dispatchEvent(new Event("change", { bubbles: true }));
 
         // 给 Lexical 一点时间应用 beforeinput 更新，再看一下结果
         setTimeout(() => {
-            if (normalize(editor.textContent) !== normalize(targetText)) {
+            if (normalizeText(editor.textContent) !== normalizedTarget) {
                 console.log("[MultiLLM] Kimi enforce final DOM write");
                 writeDom();
                 editor.dispatchEvent(new Event("input", { bubbles: true }));
@@ -395,7 +451,7 @@ if (window.__multiLLM_cs_installed) {
 
             console.log("[MultiLLM] Kimi final text =", editor.textContent);
 
-            if (autoSend) {
+            if (autoSend === true) {
                 const sendButton =
                     document.querySelector('button[aria-label="发送"]') ||
                     document.querySelector('button[class*="send"]') ||
@@ -419,21 +475,22 @@ if (window.__multiLLM_cs_installed) {
     }
 
     function fillPrompt(prompt, autoSend) {
+        const shouldAutoSend = autoSend === true;
         const url = window.location.href;
         console.log("[MultiLLM] fillPrompt on", url);
 
         if (/chatgpt\.com|chat\.openai\.com/.test(url)) {
-            return fillForChatGPT(prompt, autoSend);
+            return fillForChatGPT(prompt, shouldAutoSend);
         } else if (/claude\.ai/.test(url)) {
-            return fillForClaude(prompt, autoSend);
+            return fillForClaude(prompt, shouldAutoSend);
         } else if (/gemini\.google\.com/.test(url)) {
-            return fillForGemini(prompt, autoSend);
+            return fillForGemini(prompt, shouldAutoSend);
         } else if (/doubao\.com/.test(url)) {
-            return fillForDoubao(prompt, autoSend);
+            return fillForDoubao(prompt, shouldAutoSend);
         } else if (/chat\.deepseek\.com/.test(url)) {
-            return fillForDeepSeek(prompt, autoSend);
+            return fillForDeepSeek(prompt, shouldAutoSend);
         } else if (/kimi\.moonshot\.cn|kimi\.com|kimi\.ai/.test(url)) {
-            return fillForKimi(prompt, autoSend);
+            return fillForKimi(prompt, shouldAutoSend);
         }
 
         // fallback ...

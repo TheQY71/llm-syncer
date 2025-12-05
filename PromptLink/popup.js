@@ -48,12 +48,14 @@ document.addEventListener("DOMContentLoaded", () => {
             checkbox.type = "checkbox";
             checkbox.checked = true; // 默认全选
             checkbox.dataset.tabId = String(tab.id);
+            checkbox.className = "pill-toggle";
 
             const label = document.createElement("span");
+            label.className = "llm-name";
             label.textContent = `${name} (${tab.title || "Tab"})`;
 
-            div.appendChild(checkbox);
             div.appendChild(label);
+            div.appendChild(checkbox);
             llmListDiv.appendChild(div);
         });
     }
@@ -76,7 +78,8 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    sendBtn.addEventListener("click", () => {
+    // 发送逻辑抽出来，回车和按钮共用
+    const sendPrompt = () => {
         const prompt = promptInput.value.trim();
         const autoSend = autoSendCheckbox.checked;
 
@@ -133,6 +136,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             );
         });
+    };
+
+    // 点击按钮发送
+    sendBtn.addEventListener("click", sendPrompt);
+
+    // 回车发送，Shift+Enter 换行
+    promptInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+            e.preventDefault();
+            sendPrompt();
+        }
     });
 
     // 启动初始化
