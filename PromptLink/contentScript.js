@@ -23,6 +23,21 @@ if (window.__multiLLM_cs_installed) {
     // 去掉 \r，保留换行等其他字符，用于对比内容是否一致
     const normalizeText = (v) => (v || "").replace(/\r/g, "");
 
+    // 将光标移动到指定可编辑节点末尾，方便用户继续输入
+    const placeCaretAtEnd = (el) => {
+        try {
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            el.focus();
+        } catch (e) {
+            /* ignore */
+        }
+    };
+
     // 用 execCommand 按行插入，并在行间插入真实的段落（回车）
     const insertLinesWithExecCommand = (lines) => {
         let ok = true;
@@ -190,6 +205,9 @@ if (window.__multiLLM_cs_installed) {
         editor.dispatchEvent(new Event("change", { bubbles: true }));
 
         console.log("[MultiLLM] Gemini prompt filled");
+
+        // 让光标停在文本末尾，便于继续输入或检查
+        placeCaretAtEnd(editor);
 
         // 5. 自动发送（可选）
         if (autoSend === true) {

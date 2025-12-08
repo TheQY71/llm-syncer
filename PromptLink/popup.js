@@ -18,6 +18,8 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
     }
 
+    const PROMPT_STORAGE_KEY = "multiLLM_cachedPrompt";
+
     // 存储当前检测到的目标 tab
     let detectedTabs = [];
 
@@ -60,6 +62,29 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // 确保已在当前页面注入 content_script（扩展更新后旧页面不会自动刷新）
+    function ensureContentScripts(tabs) {
+        tabs.forEach((tab) => {
+            if (!tab.id) return;
+            chrome.scripting.executeScript(
+                {
+                    target: { tabId: tab.id },
+                    files: ["contentScript.js"],
+                },
+                () => {
+                    const err = chrome.runtime.lastError;
+                    if (err) {
+                        console.warn(
+                            "[MultiLLM][popup] inject contentScript failed",
+                            tab.id,
+                            err.message
+                        );
+                    }
+                }
+            );
+        });
+    }
+
     // 初始化：查找所有匹配的 tab 并渲染列表
     function init() {
         chrome.tabs.query({ currentWindow: true }, (tabs) => {
@@ -74,6 +99,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 "[MultiLLM][popup] detected tabs:",
                 detectedTabs.map((t) => t.url)
             );
+            ensureContentScripts(detectedTabs);
             renderLLMList();
         });
     }
@@ -107,6 +133,10 @@ document.addEventListener("DOMContentLoaded", () => {
             statusDiv.textContent = "选中的标签页已关闭或不存在。";
             return;
         }
+
+        // 发送后清空输入框与缓存
+        promptInput.value = "";
+        chrome.storage.local.set({ [PROMPT_STORAGE_KEY]: "" });
 
         let successCount = 0;
 
@@ -147,6 +177,19 @@ document.addEventListener("DOMContentLoaded", () => {
             e.preventDefault();
             sendPrompt();
         }
+    });
+
+    // 恢复缓存的输入，防止关闭弹窗后内容丢失
+    chrome.storage.local.get(PROMPT_STORAGE_KEY, (res) => {
+        const cached = res?.[PROMPT_STORAGE_KEY];
+        if (typeof cached === "string") {
+            promptInput.value = cached;
+        }
+    });
+
+    // 实时缓存输入内容
+    promptInput.addEventListener("input", () => {
+        chrome.storage.local.set({ [PROMPT_STORAGE_KEY]: promptInput.value });
     });
 
     // 启动初始化
