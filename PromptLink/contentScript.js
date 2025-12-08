@@ -774,7 +774,13 @@ if (window.__multiLLM_cs_installed) {
         chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             if (msg.type === "BROADCAST_PROMPT") {
                 console.log("[MultiLLM] got BROADCAST_PROMPT", msg);
-                const ok = fillPrompt(msg.prompt, msg.autoSend);
+                const promptValue =
+                    typeof msg.prompt === "string" ? msg.prompt : "";
+                if (!promptValue.trim()) {
+                    sendResponse({ ok: false, reason: "empty_prompt" });
+                    return true;
+                }
+                const ok = fillPrompt(promptValue, msg.autoSend);
                 sendResponse({ ok });
             }
             return true;

@@ -76,6 +76,40 @@
                 border-color: var(--accent);
                 box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.18);
             }
+            .input-actions {
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .ghost-button {
+                flex: 1;
+                min-width: 120px;
+                width: auto;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border: 1px solid var(--border);
+                background: #0f172a;
+                color: var(--text);
+                border-radius: 10px;
+                padding: 10px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: border 0.2s ease, box-shadow 0.2s ease,
+                    transform 0.1s ease;
+            }
+            .ghost-button:hover {
+                border-color: var(--accent);
+                box-shadow: 0 0 0 2px rgba(94, 234, 212, 0.12);
+                transform: translateY(-1px);
+            }
+            .ghost-button.danger {
+                border-color: #ef4444;
+                color: #fecdd3;
+            }
+            .ghost-button.danger:hover {
+                box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.16);
+            }
             .llm-section {
                 border: 1px solid var(--border);
                 border-radius: 10px;
@@ -140,6 +174,109 @@
                 transform: translateX(18px);
                 background: #0b1022;
             }
+            .favorites {
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 10px;
+                background: #0f182d;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            .favorites-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .favorites-title {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-weight: 600;
+            }
+            .title-dot.small {
+                width: 8px;
+                height: 8px;
+            }
+            .favorites-actions {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .mini-button {
+                width: auto;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border: 1px solid var(--border);
+                background: #0f172a;
+                color: var(--text);
+                border-radius: 8px;
+                padding: 6px 10px;
+                font-size: 12px;
+                cursor: pointer;
+                transition: border 0.2s ease, background 0.2s ease;
+            }
+            .mini-button:hover {
+                border-color: var(--accent);
+                background: #111d32;
+            }
+            .mini-button.danger {
+                border-color: #ef4444;
+                color: #fecdd3;
+            }
+            .favorites-list {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                max-height: 220px;
+                overflow-y: auto;
+                padding-right: 4px;
+            }
+            .favorites-list.collapsed {
+                display: none;
+            }
+            .favorite-item {
+                display: grid;
+                grid-template-columns: auto 1fr auto;
+                gap: 8px;
+                align-items: center;
+                padding: 8px;
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.02);
+            }
+            .favorite-text {
+                color: var(--text);
+                font-size: 13px;
+                line-height: 1.4;
+                cursor: pointer;
+                word-break: break-word;
+            }
+            .favorite-actions {
+                display: flex;
+                gap: 6px;
+            }
+            .favorite-actions .mini-button {
+                padding: 6px 8px;
+            }
+            .favorite-edit textarea {
+                width: 100%;
+                background: #0f172a;
+                color: var(--text);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 8px;
+                resize: vertical;
+                min-height: 80px;
+            }
+            .favorite-edit-actions {
+                display: flex;
+                justify-content: flex-end;
+                gap: 6px;
+                margin-top: 6px;
+            }
             .controls {
                 display: flex;
                 align-items: center;
@@ -193,6 +330,32 @@
                 id="prompt"
                 placeholder="输入要同步给多个 LLM 的问题，支持多行"
             ></textarea>
+            <div class="input-actions">
+                <button class="ghost-button" id="saveFavorite">
+                    收藏当前提示词
+                </button>
+                <button class="ghost-button danger" id="clearPrompt">
+                    清空输入框
+                </button>
+            </div>
+            <div class="favorites" id="favorites-box">
+                <div class="favorites-header">
+                    <div class="favorites-title">
+                        <span class="title-dot small"></span>
+                        <span>收藏的提示词</span>
+                        <span id="favorites-count" style="color: var(--muted)"></span>
+                    </div>
+                    <div class="favorites-actions">
+                        <button class="mini-button" id="toggleFavorites">
+                            收起
+                        </button>
+                        <button class="mini-button" id="sendSelectedFavorites">
+                            发送选中
+                        </button>
+                    </div>
+                </div>
+                <div class="favorites-list" id="favorites-list"></div>
+            </div>
             <div class="llm-section" id="llm-list"></div>
             <label class="controls">
                 <input type="checkbox" id="autoSend" />
