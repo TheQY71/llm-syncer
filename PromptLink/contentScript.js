@@ -99,7 +99,10 @@ if (window.__multiLLM_cs_installed) {
         const execOk = insertLinesWithExecCommand(lines);
 
         // 如果 execCommand 不 work，就直接塞 HTML 兜底（按行拆成多个 <p>，保留换行）
-        if (!execOk || normalizeText(editor.textContent) !== normalizeText(prompt)) {
+        if (
+            !execOk ||
+            normalizeText(editor.textContent) !== normalizeText(prompt)
+        ) {
             editor.innerHTML = buildParagraphHTML(prompt);
         }
 
@@ -211,15 +214,30 @@ if (window.__multiLLM_cs_installed) {
 
         // 5. 自动发送（可选）
         if (autoSend === true) {
-            const sendButton =
+            const findSendButton = () =>
                 document.querySelector('button[aria-label="Send message"]') ||
                 document.querySelector("button.send-button");
 
-            if (sendButton) {
+            const tryClick = () => {
+                const sendButton = findSendButton();
+                if (!sendButton) {
+                    console.log("[MultiLLM] Gemini send button not found");
+                    return false;
+                }
+                const disabled =
+                    sendButton.disabled ||
+                    sendButton.getAttribute("aria-disabled") === "true";
+                if (disabled) {
+                    console.log("[MultiLLM] Gemini send button disabled");
+                    return false;
+                }
                 console.log("[MultiLLM] Gemini send button found, clicking");
                 sendButton.click();
-            } else {
-                console.log("[MultiLLM] Gemini send button not found");
+                return true;
+            };
+
+            if (!tryClick()) {
+                setTimeout(tryClick, 120);
             }
         }
 
@@ -229,12 +247,40 @@ if (window.__multiLLM_cs_installed) {
     function fillForChatGPT(prompt, autoSend) {
         console.log("[MultiLLM] ChatGPT detected, trying to fill prompt");
 
-        // 1. 精确匹配 ProseMirror 的编辑区域
-        let editor =
-            document.querySelector(
-                'div.ProseMirror#prompt-textarea[contenteditable="true"]'
-            ) ||
-            document.querySelector('div.ProseMirror[contenteditable="true"]');
+        const findChatGptEditor = () => {
+            const isVisible = (el) => {
+                if (!el) return false;
+                const style = window.getComputedStyle(el);
+                return style.display !== "none" && style.visibility !== "hidden";
+            };
+            const selectors = [
+                // 优先可见的 ProseMirror
+                '.wcDTda_prosemirror-parent .ProseMirror[contenteditable="true"]',
+                '#prompt-textarea.ProseMirror[contenteditable="true"]',
+                'div.ProseMirror[contenteditable="true"]',
+                'div[contenteditable="true"][data-testid="prompt-textarea"]',
+                'div[role="textbox"][data-testid="prompt-textarea"]',
+                // 再尝试 textarea（新版隐藏 fallback）
+                'textarea#prompt-textarea',
+                'textarea[name="prompt-textarea"]',
+                'textarea[data-testid="prompt-textarea"]',
+                'textarea[aria-label^="Message"]',
+            ];
+            const seen = new Set();
+            const candidates = [];
+            selectors.forEach((sel) => {
+                const el = document.querySelector(sel);
+                if (el && !seen.has(el)) {
+                    seen.add(el);
+                    candidates.push(el);
+                }
+            });
+            const visible = candidates.find(isVisible);
+            return visible || candidates[0] || null;
+        };
+
+        // 1. 精确匹配 ChatGPT 的输入区域（textarea 或 ProseMirror）
+        const editor = findChatGptEditor();
 
         if (!editor) {
             console.log("[MultiLLM] ChatGPT editor not found");
@@ -243,35 +289,139 @@ if (window.__multiLLM_cs_installed) {
 
         console.log("[MultiLLM] ChatGPT editor found:", editor);
 
-        // 2. 聚焦编辑器
-        editor.focus();
-
-        // 3. 清空原有内容
-        editor.innerHTML = "";
-
-        // 4. 用“模拟输入”的方式插入文本，尽量符合 ProseMirror 的预期
-        const selection = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(editor);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-
-        // 模拟用户输入（比直接 innerHTML 更像真实输入）
-        document.execCommand("insertText", false, prompt);
-
-        // 5. 触发 input 事件，让 React/ProseMirror 知道内容变了
-        try {
-            editor.dispatchEvent(
-                new InputEvent("input", {
-                    bubbles: true,
-                    inputType: "insertText",
-                    data: prompt,
-                })
+        const isTextArea = editor.tagName === "TEXTAREA";
+        const normalizedTarget = normalizeText(prompt);
+        const getCurrentText = () =>
+            normalizeText(
+                isTextArea
+                    ? editor.value || editor.textContent || ""
+                    : editor.textContent || ""
             );
-        } catch (e) {
-            // 某些环境没有 InputEvent 构造器
-            editor.dispatchEvent(new Event("input", { bubbles: true }));
+        let enforceTextForSend = null;
+
+        if (isTextArea) {
+            // textarea 流程（新版 ChatGPT）
+            editor.focus();
+            editor.value = "";
+            editor.value = prompt;
+            try {
+                editor.dispatchEvent(
+                    new InputEvent("input", {
+                        bubbles: true,
+                        inputType: "insertText",
+                        data: prompt,
+                    })
+                );
+            } catch (e) {
+                editor.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+            editor.dispatchEvent(new Event("change", { bubbles: true }));
+
+            enforceTextForSend = () => {
+                editor.value = prompt;
+                try {
+                    editor.dispatchEvent(
+                        new InputEvent("input", {
+                            bubbles: true,
+                            inputType: "insertText",
+                            data: prompt,
+                        })
+                    );
+                } catch (e) {
+                    editor.dispatchEvent(new Event("input", { bubbles: true }));
+                }
+                editor.dispatchEvent(new Event("change", { bubbles: true }));
+            };
+        } else {
+            // 旧版 ProseMirror 流程
+            const clearEditor = () => {
+                try {
+                    document.execCommand("selectAll", false, null);
+                    document.execCommand("delete", false, null);
+                } catch (e) {
+                    /* ignore */
+                }
+                editor.innerHTML = "";
+                const selection = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(editor);
+                range.collapse(true);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            };
+
+            const writeDom = () => {
+                editor.innerHTML = buildParagraphHTML(prompt);
+            };
+            enforceTextForSend = () => {
+                writeDom();
+                fireInputAndChange();
+            };
+
+            const tryPasteText = () => {
+                try {
+                    const dt = new DataTransfer();
+                    dt.setData("text/plain", prompt);
+                    const pasteEvent = new ClipboardEvent("paste", {
+                        bubbles: true,
+                        cancelable: true,
+                        clipboardData: dt,
+                    });
+                    return editor.dispatchEvent(pasteEvent);
+                } catch (e) {
+                    return false;
+                }
+            };
+
+            const fireInputAndChange = () => {
+                editor.dispatchEvent(new Event("input", { bubbles: true }));
+                editor.dispatchEvent(new Event("change", { bubbles: true }));
+            };
+
+            const writeByExec = () => {
+                clearEditor();
+                const selection = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(editor);
+                range.collapse(true);
+                selection.removeAllRanges();
+                selection.addRange(range);
+                let ok = true;
+                try {
+                    ok = document.execCommand("insertText", false, prompt) && ok;
+                } catch (e) {
+                    ok = false;
+                }
+                return ok && normalizeText(editor.textContent) === normalizedTarget;
+            };
+
+            const writeByDom = () => {
+                clearEditor();
+                writeDom();
+                return normalizeText(editor.textContent) === normalizedTarget;
+            };
+
+            editor.focus();
+
+            // 先清空再写，避免旧内容残留
+            clearEditor();
+
+            let wrote = false;
+            if (tryPasteText()) {
+                wrote = normalizeText(editor.textContent) === normalizedTarget;
+            }
+            if (!wrote) wrote = writeByExec();
+            if (!wrote) wrote = writeByDom();
+
+            fireInputAndChange();
+
+            setTimeout(() => {
+                if (normalizeText(editor.textContent) !== normalizedTarget) {
+                    console.log("[MultiLLM] ChatGPT enforce final DOM write");
+                    writeDom();
+                    fireInputAndChange();
+                }
+            }, 0);
         }
 
         console.log("[MultiLLM] ChatGPT prompt filled");
@@ -279,17 +429,80 @@ if (window.__multiLLM_cs_installed) {
         // 6. 自动发送（可选）
         if (autoSend === true) {
             // 发送按钮有几种状态：voice / send，类名一样，但图标不同
-            // 直接点这个圆的提交按钮即可
-            const sendButton =
-                document.querySelector('button[data-testid="send-button"]') || // 新版可能有
-                document.querySelector("button.composer-submit-button-color"); // 你 DOM 里这一个
+            const findSendButton = () => {
+                const selectors = [
+                    'button[data-testid="send-button"]',
+                    "#composer-submit-button",
+                    "button.composer-submit-button-color",
+                    'button[aria-label="Send prompt"]',
+                    'button[aria-label^="Send message"]',
+                    'button[aria-label^="Send"]',
+                    'button[type="submit"]',
+                ];
+                const seen = new Set();
+                const candidates = [];
+                selectors.forEach((sel) => {
+                    document.querySelectorAll(sel).forEach((btn) => {
+                        if (!btn || seen.has(btn)) return;
+                        seen.add(btn);
+                        candidates.push(btn);
+                    });
+                });
+                const visible = candidates.find((btn) => {
+                    const style = window.getComputedStyle(btn);
+                    return (
+                        style.display !== "none" &&
+                        style.visibility !== "hidden" &&
+                        btn.offsetParent !== null
+                    );
+                });
+                return visible || candidates[0] || null;
+            };
 
-            if (sendButton) {
+            const tryClick = () => {
+                const sendButton = findSendButton();
+                if (!sendButton) {
+                    console.log("[MultiLLM] ChatGPT send button not found");
+                    return false;
+                }
+                const disabled =
+                    sendButton.disabled ||
+                    sendButton.getAttribute("aria-disabled") === "true";
+                if (disabled) {
+                    console.log("[MultiLLM] ChatGPT send button disabled");
+                    return false;
+                }
                 console.log("[MultiLLM] ChatGPT send button found, clicking");
                 sendButton.click();
-            } else {
-                console.log("[MultiLLM] ChatGPT send button not found");
-            }
+                return true;
+            };
+
+            const ensureReadyThenSend = (attempt = 0) => {
+                const current = getCurrentText();
+                if (current !== normalizedTarget) {
+                    if (enforceTextForSend) enforceTextForSend();
+                    if (attempt < 4) {
+                        setTimeout(
+                            () => ensureReadyThenSend(attempt + 1),
+                            60 * (attempt + 1)
+                        );
+                        return;
+                    }
+                    console.log(
+                        "[MultiLLM] ChatGPT text mismatch before send, force sending",
+                        current
+                    );
+                }
+                if (tryClick()) return;
+                if (attempt < 3) {
+                    setTimeout(
+                        () => ensureReadyThenSend(attempt + 1),
+                        80 * (attempt + 1)
+                    );
+                }
+            };
+
+            ensureReadyThenSend();
         }
 
         return true;
@@ -353,9 +566,18 @@ if (window.__multiLLM_cs_installed) {
             setTimeout(() => {
                 // 查找发送按钮，通常是 div[role="button"] 且包含发送图标
                 // 这里尝试查找包含 DeepThink 或 Search 的按钮旁边的发送按钮，或者直接找那个 icon button
-                const sendButton = document.querySelector(
-                    'div[role="button"].ds-icon-button:not(.ds-icon-button--disabled)'
+                const buttons = Array.from(
+                    document.querySelectorAll(
+                        'div[role="button"].ds-icon-button'
+                    )
+                ).filter(
+                    (btn) =>
+                        btn.getAttribute("aria-disabled") !== "true" &&
+                        !btn.classList.contains("ds-icon-button--disabled")
                 );
+
+                // DeepSeek 的发送按钮通常是操作区域里最后一个可用的 icon button
+                const sendButton = buttons[buttons.length - 1];
 
                 if (sendButton) {
                     console.log(
@@ -371,22 +593,6 @@ if (window.__multiLLM_cs_installed) {
         }
         return true;
     }
-
-    // 尝试通过粘贴事件写入，Lexical 对 paste 支持较好
-    const tryPasteText = (editor, text) => {
-        try {
-            const dt = new DataTransfer();
-            dt.setData("text/plain", text);
-            const pasteEvent = new ClipboardEvent("paste", {
-                bubbles: true,
-                cancelable: true,
-                clipboardData: dt,
-            });
-            return editor.dispatchEvent(pasteEvent);
-        } catch (e) {
-            return false;
-        }
-    };
 
     function fillForKimi(prompt, autoSend) {
         console.log("[MultiLLM] Kimi detected, trying to fill prompt");
@@ -411,6 +617,31 @@ if (window.__multiLLM_cs_installed) {
 
         const targetText = String(prompt);
         const normalizedTarget = normalizeText(targetText);
+
+        // 如果已经是目标内容，避免重复写入
+        if (normalizeText(editor.textContent) === normalizedTarget) {
+            editor.dispatchEvent(new Event("input", { bubbles: true }));
+            editor.dispatchEvent(new Event("change", { bubbles: true }));
+            console.log("[MultiLLM] Kimi already has target text");
+            return true;
+        }
+
+        // 尝试通过粘贴事件写入，Lexical 对 paste 支持较好
+        const tryPasteText = (text) => {
+            try {
+                const dt = new DataTransfer();
+                dt.setData("text/plain", text);
+                const pasteEvent = new ClipboardEvent("paste", {
+                    bubbles: true,
+                    cancelable: true,
+                    clipboardData: dt,
+                });
+                return editor.dispatchEvent(pasteEvent);
+            } catch (e) {
+                return false;
+            }
+        };
+
         const clearEditor = () => {
             try {
                 document.execCommand("selectAll", false, null);
@@ -430,64 +661,81 @@ if (window.__multiLLM_cs_installed) {
             editor.innerHTML = buildParagraphHTML(targetText);
         };
 
-        // 2. 清空旧内容并写入，避免重复追加
-        const writeByPaste = () => {
-            clearEditor();
-            const ok = tryPasteText(editor, targetText);
-            return ok && normalizeText(editor.textContent) === normalizedTarget;
+        const fireInputAndChange = () => {
+            editor.dispatchEvent(new Event("input", { bubbles: true }));
+            editor.dispatchEvent(new Event("change", { bubbles: true }));
         };
 
-        const writeByExecLines = () => {
-            clearEditor();
-            const lines = normalizedTarget.split("\n");
-            const ok = insertLinesWithExecCommand(lines);
-            return ok && normalizeText(editor.textContent) === normalizedTarget;
-        };
-
-        const writeByDom = () => {
+        const enforceDom = () => {
             clearEditor();
             writeDom();
-            return normalizeText(editor.textContent) === normalizedTarget;
+            fireInputAndChange();
         };
 
-        let wrote = writeByPaste();
-        if (!wrote) wrote = writeByExecLines();
-        if (!wrote) wrote = writeByDom();
+        const dedupeIfRepeated = (text) => {
+            const first = text.indexOf(normalizedTarget);
+            if (first === -1) return false;
+            const second = text.indexOf(
+                normalizedTarget,
+                first + normalizedTarget.length
+            );
+            return second !== -1;
+        };
 
-        // 触发 input/change，保证状态刷新
-        editor.dispatchEvent(new Event("input", { bubbles: true }));
-        editor.dispatchEvent(new Event("change", { bubbles: true }));
+        const stabilize = (attempt = 0, maxAttempts = 4) => {
+            const current = normalizeText(editor.textContent);
+            if (current === normalizedTarget) {
+                console.log("[MultiLLM] Kimi final text =", editor.textContent);
+                if (autoSend === true) {
+                    const sendButton =
+                        document.querySelector('button[aria-label="发送"]') ||
+                        document.querySelector('button[class*="send"]') ||
+                        document.querySelector('button[type="submit"]') ||
+                        document.querySelector(".send-button-container .send-button");
 
-        // 给 Lexical 一点时间应用 beforeinput 更新，再看一下结果
-        setTimeout(() => {
-            if (normalizeText(editor.textContent) !== normalizedTarget) {
-                console.log("[MultiLLM] Kimi enforce final DOM write");
-                writeDom();
-                editor.dispatchEvent(new Event("input", { bubbles: true }));
-                editor.dispatchEvent(new Event("change", { bubbles: true }));
+                    if (!sendButton) {
+                        console.log("[MultiLLM] Kimi send button not found");
+                        return;
+                    }
+                    if (sendButton.disabled) {
+                        console.log("[MultiLLM] Kimi send button disabled");
+                        return;
+                    }
+
+                    console.log("[MultiLLM] Kimi send button found, clicking");
+                    sendButton.click();
+                }
+                return;
             }
 
-            console.log("[MultiLLM] Kimi final text =", editor.textContent);
-
-            if (autoSend === true) {
-                const sendButton =
-                    document.querySelector('button[aria-label="发送"]') ||
-                    document.querySelector('button[class*="send"]') ||
-                    document.querySelector('button[type="submit"]');
-
-                if (!sendButton) {
-                    console.log("[MultiLLM] Kimi send button not found");
-                    return;
-                }
-                if (sendButton.disabled) {
-                    console.log("[MultiLLM] Kimi send button disabled");
-                    return;
-                }
-
-                console.log("[MultiLLM] Kimi send button found, clicking");
-                sendButton.click();
+            if (dedupeIfRepeated(current)) {
+                console.log("[MultiLLM] Kimi dedupe repeated content");
+                enforceDom();
+                setTimeout(
+                    () => stabilize(attempt + 1, maxAttempts),
+                    40 * (attempt + 1)
+                );
+                return;
             }
-        }, 0);
+
+            if (attempt >= maxAttempts) {
+                console.log(
+                    "[MultiLLM] Kimi stabilize failed, text =",
+                    editor.textContent
+                );
+                return;
+            }
+
+            enforceDom();
+            const delay = 40 * (attempt + 1);
+            setTimeout(() => stabilize(attempt + 1, maxAttempts), delay);
+        };
+
+        const pasted = tryPasteText(targetText);
+        if (!pasted) {
+            enforceDom();
+        }
+        setTimeout(() => stabilize(0, 4), 30);
 
         return true;
     }

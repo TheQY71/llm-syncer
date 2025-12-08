@@ -19,9 +19,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const PROMPT_STORAGE_KEY = "multiLLM_cachedPrompt";
+    const LLM_PREFS_KEY = "multiLLM_llmPreferences";
 
     // 存储当前检测到的目标 tab
     let detectedTabs = [];
+    // 存储每个 LLM tab 的启用状态（按 tabId 记忆，避免同一 LLM 的不同窗口互相影响）
+    let llmPreferences = {};
 
     function getLLMName(url) {
         if (/chatgpt\.com|chat\.openai\.com/.test(url)) return "ChatGPT";
@@ -33,6 +36,24 @@ document.addEventListener("DOMContentLoaded", () => {
         return "Unknown LLM";
     }
 
+    const isTabEnabled = (tab) => {
+        const key = String(tab.id);
+        const pref = llmPreferences?.[key];
+        if (!pref) return true; // 默认启用
+        if (typeof pref.enabled === "boolean") return pref.enabled;
+        if (typeof pref.disabled === "boolean") return !pref.disabled;
+        return true;
+    };
+
+    const setTabEnabled = (tab, enabled) => {
+        const key = String(tab.id);
+        llmPreferences = {
+            ...llmPreferences,
+            [key]: { enabled },
+        };
+        chrome.storage.local.set({ [LLM_PREFS_KEY]: llmPreferences });
+    };
+
     function renderLLMList() {
         llmListDiv.innerHTML = "";
 
@@ -41,16 +62,35 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        detectedTabs.forEach((tab) => {
+        const items = detectedTabs.map((tab, idx) => {
             const name = getLLMName(tab.url);
+            return {
+                tab,
+                name,
+                enabled: isTabEnabled(tab),
+                order: idx, // 保留原顺序用于稳定排序
+            };
+        });
+
+        // 启用的排前面，未启用的排后面，保持稳定顺序
+        items.sort((a, b) => {
+            if (a.enabled === b.enabled) return a.order - b.order;
+            return a.enabled ? -1 : 1;
+        });
+
+        items.forEach(({ tab, name, enabled }) => {
             const div = document.createElement("div");
             div.className = "llm-item";
 
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox";
-            checkbox.checked = true; // 默认全选
+            checkbox.checked = enabled; // 默认全选，记忆用户选择
             checkbox.dataset.tabId = String(tab.id);
             checkbox.className = "pill-toggle";
+            checkbox.addEventListener("change", () => {
+                setTabEnabled(tab, checkbox.checked);
+                renderLLMList();
+            });
 
             const label = document.createElement("span");
             label.className = "llm-name";
@@ -87,20 +127,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 初始化：查找所有匹配的 tab 并渲染列表
     function init() {
-        chrome.tabs.query({ currentWindow: true }, (tabs) => {
-            detectedTabs = tabs.filter((tab) => {
-                if (!tab.url) return false;
-                return /chatgpt\.com|chat\.openai\.com|claude\.ai|gemini\.google\.com|doubao\.com|chat\.deepseek\.com|kimi\.moonshot\.cn|kimi\.com|kimi\.ai/.test(
-                    tab.url
-                );
-            });
+        chrome.storage.local.get(LLM_PREFS_KEY, (res) => {
+            const stored = res?.[LLM_PREFS_KEY];
+            // 仅保留 tabId 形式的记录，避免同名 LLM 的多标签互相影响
+            llmPreferences = {};
+            if (stored && typeof stored === "object") {
+                Object.keys(stored).forEach((key) => {
+                    if (/^\d+$/.test(key)) {
+                        llmPreferences[key] = stored[key];
+                    }
+                });
+            }
 
-            console.log(
-                "[MultiLLM][popup] detected tabs:",
-                detectedTabs.map((t) => t.url)
-            );
-            ensureContentScripts(detectedTabs);
-            renderLLMList();
+            chrome.tabs.query({ currentWindow: true }, (tabs) => {
+                detectedTabs = tabs.filter((tab) => {
+                    if (!tab.url) return false;
+                    return /chatgpt\.com|chat\.openai\.com|claude\.ai|gemini\.google\.com|doubao\.com|chat\.deepseek\.com|kimi\.moonshot\.cn|kimi\.com|kimi\.ai/.test(
+                        tab.url
+                    );
+                });
+
+                console.log(
+                    "[MultiLLM][popup] detected tabs:",
+                    detectedTabs.map((t) => t.url)
+                );
+                ensureContentScripts(detectedTabs);
+                renderLLMList();
+            });
         });
     }
 
