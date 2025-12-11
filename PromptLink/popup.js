@@ -2,6 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const sendBtn = document.getElementById("send");
     const promptInput = document.getElementById("prompt");
     const statusDiv = document.getElementById("status");
+    const mainPanel = document.querySelector(".panel");
     const autoSendCheckbox = document.getElementById("autoSend");
     const llmListDiv = document.getElementById("llm-list");
     const llmHeader = document.getElementById("llm-header");
@@ -17,6 +18,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const favoritePromptInput = document.getElementById("favorite-prompt-input");
     const favoriteSaveBtn = document.getElementById("favorite-save");
     const favoriteCancelBtn = document.getElementById("favorite-cancel");
+    const themeRadios = document.querySelectorAll('input[name="theme"]');
+    const showStatusToggle = document.getElementById("showStatusToggle");
+    const settingsDialog = document.querySelector("#settings-modal .modal");
 
     const openSettingsBtn = document.getElementById("openSettings");
     const settingsModal = document.getElementById("settings-modal");
@@ -41,7 +45,10 @@ document.addEventListener("DOMContentLoaded", () => {
         !favoriteTitleInput ||
         !favoritePromptInput ||
         !favoriteSaveBtn ||
-        !favoriteCancelBtn
+        !favoriteCancelBtn ||
+        !showStatusToggle ||
+        !settingsDialog ||
+        !mainPanel
     ) {
         console.error(
             "[MultiLLM][popup] 必要的 DOM 元素缺失，请检查 popup.html 的 id。"
@@ -54,6 +61,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const FAVORITES_STORAGE_KEY = "multiLLM_favorites";
     const AUTO_SEND_PREF_KEY = "multiLLM_autoSendPref";
     const INJECTION_MODE_KEY = "multiLLM_injectionMode";
+    const THEME_PREF_KEY = "multiLLM_theme";
+    const STATUS_PREF_KEY = "multiLLM_showStatus";
 
     // 存储当前检测到的目标 tab
     let detectedTabs = [];
@@ -69,6 +78,10 @@ document.addEventListener("DOMContentLoaded", () => {
     let editingFavoriteId = null;
     // 注入模式: 'replace' | 'append'
     let injectionMode = 'replace';
+    // 主题
+    let themeName = 'noir';
+    // 状态栏显示
+    let showStatus = true;
 
     const applyAccordionStates = () => {
         const favIcon = favoritesHeader.querySelector(".accordion-icon");
@@ -82,7 +95,17 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     applyAccordionStates();
 
+    const updateStatusVisibility = () => {
+        if (showStatus) {
+            statusDiv.style.display = "";
+        } else {
+            statusDiv.style.display = "none";
+            statusDiv.textContent = "";
+        }
+    };
+
     const setStatus = (text) => {
+        if (!showStatus) return;
         statusDiv.textContent = text || "";
     };
 
@@ -119,6 +142,31 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const closeFavoriteModal = () => {
         favoriteModal.classList.remove("show");
+    };
+
+    const applyTheme = (name) => {
+        const theme = ["noir", "cyber", "glass", "zen"].includes(name)
+            ? name
+            : "noir";
+        document.body.setAttribute("data-theme", theme);
+        themeRadios.forEach((r) => {
+            r.checked = r.value === theme;
+        });
+        themeName = theme;
+    };
+    applyTheme(themeName);
+
+    const syncSettingsSize = () => {
+        if (!settingsDialog || !mainPanel) return;
+        const h = mainPanel.offsetHeight;
+        const w = mainPanel.offsetWidth;
+        const heightPx = h && Number.isFinite(h) ? Math.max(200, h - 8) : null;
+        const widthPx = w && Number.isFinite(w) ? Math.max(240, w - 8) : null;
+
+        settingsDialog.style.height = heightPx ? `${heightPx}px` : "";
+        settingsDialog.style.maxHeight = heightPx ? `${heightPx}px` : "";
+        settingsDialog.style.width = widthPx ? `${widthPx}px` : "";
+        settingsDialog.style.maxWidth = widthPx ? `${widthPx}px` : "";
     };
 
     function getLLMName(url) {
@@ -399,12 +447,14 @@ document.addEventListener("DOMContentLoaded", () => {
     // 初始化：查找所有匹配的 tab 并渲染列表
     function init() {
         chrome.storage.local.get(
-            [LLM_PREFS_KEY, FAVORITES_STORAGE_KEY, AUTO_SEND_PREF_KEY, INJECTION_MODE_KEY],
+            [LLM_PREFS_KEY, FAVORITES_STORAGE_KEY, AUTO_SEND_PREF_KEY, INJECTION_MODE_KEY, THEME_PREF_KEY, STATUS_PREF_KEY],
             (res) => {
                 const stored = res?.[LLM_PREFS_KEY];
                 const autoSendPref = res?.[AUTO_SEND_PREF_KEY];
                 const modePref = res?.[INJECTION_MODE_KEY];
-                
+                const themePref = res?.[THEME_PREF_KEY];
+                const statusPref = res?.[STATUS_PREF_KEY];
+
                 if (typeof autoSendPref === "boolean") {
                     autoSendCheckbox.checked = autoSendPref;
                 }
@@ -416,6 +466,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 injectionModeRadios.forEach(r => {
                     r.checked = (r.value === injectionMode);
                 });
+                if (typeof themePref === "string") {
+                    applyTheme(themePref);
+                } else {
+                    applyTheme(themeName);
+                }
+                if (typeof statusPref === "boolean") {
+                    showStatus = statusPref;
+                }
+                showStatusToggle.checked = showStatus;
+                updateStatusVisibility();
                 // 仅保留 tabId 形式的记录，避免同名 LLM 的多标签互相影响
                 llmPreferences = {};
                 if (stored && typeof stored === "object") {
@@ -564,6 +624,14 @@ document.addEventListener("DOMContentLoaded", () => {
     favoriteModal.addEventListener("click", (e) => {
         if (e.target === favoriteModal) closeFavoriteModal();
     });
+    themeRadios.forEach((radio) => {
+        radio.addEventListener("change", () => {
+            if (radio.checked) {
+                applyTheme(radio.value);
+                chrome.storage.local.set({ [THEME_PREF_KEY]: themeName });
+            }
+        });
+    });
     favoritesHeader.addEventListener("click", () => {
         if (favoritesCollapsed) {
             favoritesCollapsed = false;
@@ -611,6 +679,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Settings UI Logic
     openSettingsBtn.addEventListener("click", () => {
+        syncSettingsSize();
         settingsModal.classList.add("show");
     });
     settingsCloseBtn.addEventListener("click", () => {
@@ -626,6 +695,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 chrome.storage.local.set({ [INJECTION_MODE_KEY]: injectionMode });
             }
         });
+    });
+    showStatusToggle.addEventListener("change", () => {
+        showStatus = showStatusToggle.checked;
+        chrome.storage.local.set({ [STATUS_PREF_KEY]: showStatus });
+        updateStatusVisibility();
+    });
+    window.addEventListener("resize", () => {
+        if (settingsModal.classList.contains("show")) {
+            syncSettingsSize();
+        }
     });
 
     // 启动初始化

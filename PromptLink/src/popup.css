@@ -1,0 +1,322 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    /* Theme tokens */
+    :root {
+        color-scheme: dark;
+        /* Noir Minimal (default) */
+        --bg-gradient: radial-gradient(circle at 20% 20%, #0b0d14, #070a12 55%);
+        --panel-bg: #11141f;
+        --panel-subtle: #191f2b;
+        --panel-border: #2a2f3c;
+        --panel-shadow: 0 18px 40px rgba(0, 0, 0, 0.35), 0 8px 22px rgba(0, 0, 0, 0.28);
+        --text: #f2f3f5;
+        --muted: #8a92a6;
+        --accent1: #3be3c4;
+        --accent2: #53a8ff;
+        --button-bg: rgba(255, 255, 255, 0.04);
+        --button-border: #2a2f3c;
+        --button-hover: rgba(255, 255, 255, 0.08);
+        --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        --focus-ring: 0 0 0 2px rgba(83, 168, 255, 0.25);
+    }
+
+    body[data-theme="cyber"] {
+        --bg-gradient: radial-gradient(circle at 25% 15%, #0d1538, #030616 60%);
+        --panel-bg: #0a1028;
+        --panel-subtle: rgba(15, 24, 54, 0.7);
+        --panel-border: #1f334f;
+        --panel-shadow: 0 25px 70px rgba(15, 30, 70, 0.55), 0 10px 30px rgba(0, 0, 0, 0.35);
+        --text: #ecfeff;
+        --muted: #9aa8c1;
+        --accent1: #5fffe7;
+        --accent2: #66a4ff;
+        --button-bg: rgba(102, 164, 255, 0.08);
+        --button-border: rgba(102, 164, 255, 0.25);
+        --button-hover: rgba(95, 255, 231, 0.12);
+        --card-shadow: inset 0 1px 0 rgba(102, 164, 255, 0.18);
+        --focus-ring: 0 0 0 2px rgba(102, 164, 255, 0.35);
+    }
+
+    body[data-theme="glass"] {
+        --bg-gradient: radial-gradient(circle at 20% 20%, rgba(15, 17, 23, 0.6), rgba(15, 17, 23, 0.9));
+        --panel-bg: rgba(255, 255, 255, 0.1);
+        --panel-subtle: rgba(255, 255, 255, 0.08);
+        --panel-border: rgba(255, 255, 255, 0.15);
+        --panel-shadow: 0 20px 60px rgba(0, 0, 0, 0.35), 0 10px 32px rgba(0, 0, 0, 0.3);
+        --text: #ffffff;
+        --muted: #cdd3e0;
+        --accent1: #a1ffe8;
+        --accent2: #7ba7ff;
+        --button-bg: rgba(255, 255, 255, 0.18);
+        --button-border: rgba(255, 255, 255, 0.22);
+        --button-hover: rgba(255, 255, 255, 0.26);
+        --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        --focus-ring: 0 0 0 2px rgba(161, 255, 232, 0.35);
+    }
+
+    body[data-theme="zen"] {
+        --bg-gradient: radial-gradient(circle at 25% 20%, #f6f4ef, #edece8 60%);
+        --panel-bg: #ffffff;
+        --panel-subtle: #f6f4ef;
+        --panel-border: #c7c7c7;
+        --panel-shadow: 0 12px 32px rgba(58, 58, 58, 0.08), 0 4px 12px rgba(58, 58, 58, 0.06);
+        --text: #3a3a3a;
+        --muted: #888888;
+        --accent1: #7ba88c;
+        --accent2: #8a9eb5;
+        --button-bg: rgba(0, 0, 0, 0.04);
+        --button-border: rgba(0, 0, 0, 0.08);
+        --button-hover: rgba(0, 0, 0, 0.08);
+        --card-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.05);
+        --focus-ring: 0 0 0 2px rgba(123, 168, 140, 0.25);
+        color-scheme: light;
+    }
+
+    body {
+        @apply m-0 min-w-[360px] p-2 font-sans;
+        color: var(--text);
+        background: var(--bg-gradient);
+    }
+    textarea,
+    input,
+    button {
+        font-family: inherit;
+    }
+    textarea {
+        @apply w-full border-0 bg-transparent text-sm leading-relaxed placeholder:text-slate-500 resize-y outline-none;
+        color: var(--text);
+        min-height: 120px;
+        padding: 12px 12px 6px;
+    }
+    textarea:focus {
+        @apply ring-0;
+    }
+    ::selection {
+        background: color-mix(in srgb, var(--accent1) 65%, transparent);
+    }
+    ::-webkit-scrollbar {
+        width: 6px;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.18);
+        border-radius: 999px;
+    }
+    input[type="text"],
+    .text-field {
+        @apply w-full rounded-lg border px-3 py-2 text-sm outline-none transition focus:ring-2;
+        color: var(--text);
+        border-color: var(--panel-border);
+        background: var(--panel-subtle);
+        box-shadow: var(--card-shadow);
+    }
+}
+
+@layer components {
+    .panel {
+        @apply flex flex-col gap-3 rounded-2xl border p-3 backdrop-blur-lg;
+        background: var(--panel-bg);
+        border-color: var(--panel-border);
+        box-shadow: var(--panel-shadow);
+        color: var(--text);
+    }
+    .title-dot {
+        @apply h-2.5 w-2.5 rounded-full shadow-[0_0_12px_rgba(94,234,212,0.7)];
+        background: linear-gradient(135deg, var(--accent1), var(--accent2));
+    }
+    .title-dot.small {
+        @apply h-2 w-2;
+    }
+    .input-card {
+        @apply overflow-hidden rounded-xl border;
+        background: var(--panel-subtle);
+        border-color: var(--panel-border);
+        box-shadow: var(--card-shadow);
+    }
+    .toolbar {
+        @apply flex items-center justify-between gap-3 border-t px-3 py-2.5;
+        background: var(--panel-subtle);
+        border-color: var(--panel-border);
+    }
+    .toolbar-left,
+    .toolbar-right {
+        @apply inline-flex items-center gap-2.5;
+    }
+    .btn-icon {
+        @apply relative inline-flex h-10 w-10 items-center justify-center rounded-xl border text-base transition duration-150 focus-visible:outline-none focus-visible:ring-2;
+        background: var(--button-bg);
+        border-color: var(--button-border);
+        color: var(--text);
+        box-shadow: none;
+        transition-property: border, box-shadow, background, color, transform;
+    }
+    .btn-icon-ghost {
+        @apply border-0 bg-transparent;
+        color: var(--muted);
+    }
+    .btn-icon:hover,
+    .btn-icon:focus-visible {
+        border-color: color-mix(in srgb, var(--accent2) 40%, var(--button-border));
+        background: var(--button-hover);
+        box-shadow: var(--focus-ring);
+    }
+    .btn-icon-primary {
+        @apply border-0 font-semibold;
+        background: linear-gradient(120deg, var(--accent1), var(--accent2));
+        color: #0b1022;
+        box-shadow: 0 8px 25px color-mix(in srgb, var(--accent1) 45%, transparent);
+    }
+    .toggle-inline {
+        @apply inline-flex items-center gap-2 text-xs cursor-pointer select-none;
+        color: var(--muted);
+    }
+    .toggle-inline input {
+        @apply h-4 w-4;
+        accent-color: var(--accent1);
+    }
+    .accordion {
+        @apply rounded-xl;
+    }
+    .accordion-header {
+        @apply flex w-full items-center justify-between rounded-lg px-1.5 py-2 text-sm transition;
+        color: var(--text);
+    }
+    .accordion-header:hover {
+        background: color-mix(in srgb, var(--accent2) 8%, transparent);
+    }
+    .accordion-title {
+        @apply flex items-center gap-2 font-semibold;
+    }
+    .accordion-icon {
+        @apply transition-transform duration-200;
+        color: var(--muted);
+    }
+    .accordion-icon.open {
+        @apply rotate-90;
+    }
+    .accordion-body {
+        @apply px-1 pt-1 pb-2;
+    }
+    .accordion-body.collapsed {
+        display: none;
+    }
+    .llm-section {
+        @apply max-h-48 overflow-y-auto rounded-lg px-2 py-1.5;
+        background: var(--panel-subtle);
+        box-shadow: var(--card-shadow);
+    }
+    .llm-item {
+        @apply flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm transition;
+        color: var(--text);
+    }
+    .llm-item:hover {
+        background: color-mix(in srgb, var(--accent2) 8%, transparent);
+    }
+    .llm-name {
+        @apply flex-1;
+        color: var(--text);
+    }
+    .pill-toggle {
+        @apply relative h-6 w-11 cursor-pointer appearance-none rounded-full border shadow-inner transition;
+        border-color: color-mix(in srgb, var(--panel-border) 80%, transparent);
+        background: var(--button-bg);
+    }
+    .pill-toggle::after {
+        content: "";
+        @apply absolute left-1 top-1 h-4 w-4 rounded-full shadow transition;
+        background: color-mix(in srgb, var(--text) 85%, #cbd5e1);
+    }
+    .pill-toggle:checked {
+        @apply border-transparent;
+        background: linear-gradient(120deg, var(--accent1), var(--accent2));
+    }
+    .pill-toggle:checked::after {
+        @apply translate-x-5;
+        background: #0b1022;
+    }
+    .favorites-list {
+        @apply flex max-h-52 flex-col gap-2 overflow-y-auto pr-1;
+    }
+    .favorites-list.collapsed {
+        display: none;
+    }
+    .favorite-item {
+        @apply grid grid-cols-[1fr_auto] items-center gap-2 rounded-lg px-2.5 py-2;
+        background: var(--panel-subtle);
+        box-shadow: var(--card-shadow);
+    }
+    .favorite-text {
+        @apply cursor-pointer truncate text-sm;
+        color: var(--text);
+    }
+    .favorite-actions {
+        @apply flex items-center gap-1.5;
+    }
+    .favorite-edit {
+        @apply flex flex-col gap-2;
+    }
+    .favorite-edit textarea {
+        @apply min-h-[90px] rounded-lg border px-3 py-2 text-sm;
+        background: var(--panel-subtle);
+        border-color: var(--panel-border);
+        box-shadow: var(--card-shadow);
+        color: var(--text);
+    }
+    .favorite-edit-actions {
+        @apply mt-1 flex justify-end gap-2;
+    }
+    .mini-button {
+        @apply inline-flex items-center justify-center rounded-md border px-2.5 py-1.5 text-xs transition;
+        color: var(--text);
+        background: var(--button-bg);
+        border-color: color-mix(in srgb, var(--panel-border) 80%, transparent);
+    }
+    .mini-button.danger {
+        @apply border-red-400 text-red-100 hover:bg-red-500/10;
+    }
+    .mini-button.icon-only {
+        @apply h-7 w-7 min-w-[1.75rem] px-1;
+    }
+    .mini-button:hover {
+        border-color: color-mix(in srgb, var(--accent2) 35%, var(--panel-border));
+        background: var(--button-hover);
+    }
+    .modal-backdrop {
+        @apply fixed inset-0 z-[9999] hidden items-center justify-center bg-black/55 p-4;
+    }
+    .modal-backdrop.show {
+        @apply flex;
+    }
+    .modal {
+        @apply relative flex w-full max-w-xl flex-col gap-3 rounded-2xl border p-4 backdrop-blur-md;
+        background: var(--panel-bg);
+        border-color: var(--panel-border);
+        box-shadow: var(--panel-shadow);
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
+    }
+    .modal h3 {
+        @apply m-0 flex items-center gap-2 text-base font-semibold;
+        color: var(--text);
+    }
+    .modal textarea {
+        @apply min-h-[120px] rounded-lg border px-3 py-2;
+        background: var(--panel-subtle);
+        border-color: var(--panel-border);
+        box-shadow: var(--card-shadow);
+        color: var(--text);
+    }
+    .modal-close {
+        @apply absolute right-3 top-3 z-20 h-9 w-9;
+        background: var(--panel-bg);
+    }
+    .modal-actions {
+        @apply flex justify-end gap-2;
+    }
+    .status {
+        @apply text-xs;
+        color: var(--muted);
+    }
+}
