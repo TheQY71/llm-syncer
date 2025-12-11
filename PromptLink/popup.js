@@ -20,6 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const favoriteCancelBtn = document.getElementById("favorite-cancel");
     const themeRadios = document.querySelectorAll('input[name="theme"]');
     const showStatusToggle = document.getElementById("showStatusToggle");
+    const enableFloatingToggle = document.getElementById("enableFloatingToggle");
     const settingsDialog = document.querySelector("#settings-modal .modal");
 
     const openSettingsBtn = document.getElementById("openSettings");
@@ -47,6 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
         !favoriteSaveBtn ||
         !favoriteCancelBtn ||
         !showStatusToggle ||
+        !enableFloatingToggle ||
         !settingsDialog ||
         !mainPanel
     ) {
@@ -63,6 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const INJECTION_MODE_KEY = "multiLLM_injectionMode";
     const THEME_PREF_KEY = "multiLLM_theme";
     const STATUS_PREF_KEY = "multiLLM_showStatus";
+    const FLOATING_PREF_KEY = "multiLLM_floatingEnabled";
 
     // 存储当前检测到的目标 tab
     let detectedTabs = [];
@@ -421,6 +424,25 @@ document.addEventListener("DOMContentLoaded", () => {
         return targetTabs;
     };
 
+    const notifyFloatingToggle = (enabled) => {
+        chrome.tabs.query({ currentWindow: true }, (tabs) => {
+            tabs.forEach((tab) => {
+                if (!tab?.id || !tab.url) return;
+                if (
+                    !/chatgpt\.com|chat\.openai\.com|claude\.ai|gemini\.google\.com|doubao\.com|chat\.deepseek\.com|kimi\.moonshot\.cn|kimi\.com|kimi\.ai/.test(
+                        tab.url
+                    )
+                ) {
+                    return;
+                }
+                chrome.tabs.sendMessage(tab.id, {
+                    type: "MULTILLMSYNCER_TOGGLE_FLOATING",
+                    enabled,
+                });
+            });
+        });
+    };
+
     // 确保已在当前页面注入 content_script（扩展更新后旧页面不会自动刷新）
     function ensureContentScripts(tabs) {
         tabs.forEach((tab) => {
@@ -447,13 +469,14 @@ document.addEventListener("DOMContentLoaded", () => {
     // 初始化：查找所有匹配的 tab 并渲染列表
     function init() {
         chrome.storage.local.get(
-            [LLM_PREFS_KEY, FAVORITES_STORAGE_KEY, AUTO_SEND_PREF_KEY, INJECTION_MODE_KEY, THEME_PREF_KEY, STATUS_PREF_KEY],
+            [LLM_PREFS_KEY, FAVORITES_STORAGE_KEY, AUTO_SEND_PREF_KEY, INJECTION_MODE_KEY, THEME_PREF_KEY, STATUS_PREF_KEY, FLOATING_PREF_KEY],
             (res) => {
                 const stored = res?.[LLM_PREFS_KEY];
                 const autoSendPref = res?.[AUTO_SEND_PREF_KEY];
                 const modePref = res?.[INJECTION_MODE_KEY];
                 const themePref = res?.[THEME_PREF_KEY];
                 const statusPref = res?.[STATUS_PREF_KEY];
+                const floatingPref = res?.[FLOATING_PREF_KEY];
 
                 if (typeof autoSendPref === "boolean") {
                     autoSendCheckbox.checked = autoSendPref;
@@ -476,6 +499,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
                 showStatusToggle.checked = showStatus;
                 updateStatusVisibility();
+                if (typeof floatingPref === "boolean") {
+                    enableFloatingToggle.checked = floatingPref;
+                } else {
+                    enableFloatingToggle.checked = true;
+                }
                 // 仅保留 tabId 形式的记录，避免同名 LLM 的多标签互相影响
                 llmPreferences = {};
                 if (stored && typeof stored === "object") {
@@ -700,6 +728,11 @@ document.addEventListener("DOMContentLoaded", () => {
         showStatus = showStatusToggle.checked;
         chrome.storage.local.set({ [STATUS_PREF_KEY]: showStatus });
         updateStatusVisibility();
+    });
+    enableFloatingToggle.addEventListener("change", () => {
+        const enabled = enableFloatingToggle.checked;
+        chrome.storage.local.set({ [FLOATING_PREF_KEY]: enabled });
+        notifyFloatingToggle(enabled);
     });
     window.addEventListener("resize", () => {
         if (settingsModal.classList.contains("show")) {

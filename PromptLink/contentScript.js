@@ -14,8 +14,20 @@ if (window.__multiLLM_cs_installed_v5) {
     const FLOATING_PREF_KEY = "multiLLM_floatingEnabled";
 
     let floatingHost = null;
+    let floatingDockIcon = null;
+    let isFloatingMinimized = false;
+    let dockIconTop = 24;
+
     // Inline style support: we avoid external loads to prevent chrome-extension://invalid fetches.
     const loadPopupCssText = () => Promise.resolve("");
+
+    const getDockIconUrl = () => {
+        const runtime = typeof chrome !== "undefined" ? chrome?.runtime : null;
+        if (!runtime?.getURL) return null;
+        const url = runtime.getURL("icons/icon-48.png");
+        if (!url || url.includes("chrome-extension://invalid")) return null;
+        return url;
+    };
 
     const readFloatingEnabled = () =>
         new Promise((resolve) => {
@@ -847,6 +859,11 @@ if (window.__multiLLM_cs_installed_v5) {
             existing.remove();
         }
         floatingHost = null;
+        if (floatingDockIcon && floatingDockIcon.isConnected) {
+            floatingDockIcon.remove();
+        }
+        floatingDockIcon = null;
+        isFloatingMinimized = false;
         window.__multiLLM_floatingPanelMounted = false;
     };
 
@@ -913,6 +930,11 @@ if (window.__multiLLM_cs_installed_v5) {
                 box-shadow: var(--panel-shadow);
                 padding: 8px;
                 overflow: hidden;
+                opacity: 0.88;
+                transition: opacity 0.15s ease;
+            }
+            .floating-shell:hover {
+                opacity: 1;
             }
             .floating-panel {
                 position: relative;
@@ -1425,6 +1447,7 @@ if (window.__multiLLM_cs_installed_v5) {
         shadow.appendChild(shell);
         document.documentElement.appendChild(host);
         floatingHost = host;
+        isFloatingMinimized = false;
         window.__multiLLM_floatingPanelMounted = true;
 
         const promptInput = shell.querySelector("#floating-prompt");
@@ -1552,6 +1575,181 @@ if (window.__multiLLM_cs_installed_v5) {
             if (favIcon) favIcon.classList.toggle("open", !favoritesCollapsed);
         };
         applyAccordionStates();
+
+        // --- Dock icon (minimized mode) helpers ---
+        const clamp = (val, min, max) => Math.min(max, Math.max(min, val));
+
+        const ensureDockIconStyle = () => {
+            // Inject a small style tag to control hover/active visuals without relying on page CSS.
+            if (document.getElementById("promptlink-dock-style")) return;
+            const style = document.createElement("style");
+            style.id = "promptlink-dock-style";
+            style.textContent = `
+                #promptlink-dock-icon {
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 16px 0 0 16px;
+                    background: #0b0d14;
+                    box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+                    opacity: 0.95;
+                    overflow: hidden;
+                    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+                    cursor: pointer;
+                }
+                #promptlink-dock-icon:hover {
+                    transform: scale(1.03);
+                    box-shadow: 0 14px 30px rgba(0,0,0,0.45);
+                    opacity: 1;
+                }
+                #promptlink-dock-icon:active {
+                    transform: scale(0.97);
+                }
+                #promptlink-dock-icon img {
+                    position: absolute;
+                    inset: 15%;
+                    width: 70% !important;
+                    height: 70% !important;
+                    max-width: none !important;
+                    max-height: none !important;
+                    display: block !important;
+                    object-fit: contain;
+                    border-radius: 10px;
+                    pointer-events: none;
+                }
+            `;
+            document.documentElement.appendChild(style);
+        };
+
+        const createPromptLinkDockIcon = () => {
+            // Remove duplicated dock icons, keep only one instance.
+            const existingIcons = Array.from(document.querySelectorAll("#promptlink-dock-icon"));
+            if (existingIcons.length > 1) {
+                existingIcons.slice(1).forEach((el) => el.remove());
+            }
+            if (existingIcons.length === 1 && existingIcons[0].isConnected) {
+                floatingDockIcon = existingIcons[0];
+                return floatingDockIcon;
+            }
+
+            // Use runtime.getURL to avoid hardcoding extension id and ensure resource can be loaded.
+            const iconUrl = getDockIconUrl() || chrome.runtime.getURL("icons/icon-48.png");
+            const icon = document.createElement("div");
+            icon.id = "promptlink-dock-icon";
+            const size = 48;
+            ensureDockIconStyle();
+            Object.assign(icon.style, {
+                position: "fixed",
+                right: "0px",
+                top: `${dockIconTop}px`,
+                width: `${size}px`,
+                height: `${size}px`,
+                zIndex: "2147483647",
+                display: "none",
+            });
+            const img = document.createElement("img");
+            img.alt = "Prompt Link";
+            img.src = iconUrl;
+            // 防御站点全局 CSS：显式设置宽高、display、max-*，避免被覆盖为 0。
+            img.style.setProperty("width", "70%", "important");
+            img.style.setProperty("height", "70%", "important");
+            img.style.setProperty("display", "block", "important");
+            img.style.setProperty("max-width", "none", "important");
+            img.style.setProperty("max-height", "none", "important");
+            Object.assign(img.style, {
+                objectFit: "contain",
+                position: "absolute",
+                inset: "15%",
+                pointerEvents: "none",
+            });
+            icon.appendChild(img);
+            document.body.appendChild(icon);
+            floatingDockIcon = icon;
+            return icon;
+        };
+
+        const ensureDockIcon = () => {
+            const icon = createPromptLinkDockIcon();
+            const size = 48;
+            let dragging = false;
+            let startY = 0;
+            let originTop = dockIconTop;
+            let moved = false;
+            const moveThreshold = 4;
+
+            const onMove = (e) => {
+                if (!dragging) return;
+                const dy = e.clientY - startY;
+                if (Math.abs(dy) > moveThreshold) moved = true;
+                const nextTop = clamp(
+                    originTop + dy,
+                    8,
+                    Math.max(8, window.innerHeight - size - 8)
+                );
+                dockIconTop = nextTop;
+                icon.style.top = `${dockIconTop}px`;
+            };
+            const onUp = () => {
+                if (!dragging) return;
+                dragging = false;
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+                if (!moved) {
+                    restoreFromDock();
+                }
+            };
+
+            icon.onpointerdown = (e) => {
+                if (e.button !== 0) return;
+                dragging = true;
+                startY = e.clientY;
+                originTop = dockIconTop;
+                moved = false;
+                window.addEventListener("pointermove", onMove);
+                window.addEventListener("pointerup", onUp);
+                e.preventDefault();
+            };
+
+            return icon;
+        };
+
+        const showDockIcon = () => {
+            const icon = ensureDockIcon();
+            const size = icon.offsetHeight || 48;
+            dockIconTop = clamp(
+                dockIconTop,
+                8,
+                Math.max(8, window.innerHeight - size - 8)
+            );
+            icon.style.top = `${dockIconTop}px`;
+            icon.style.display = "block";
+        };
+
+        function hideDockIcon() {
+            if (floatingDockIcon) {
+                floatingDockIcon.style.display = "none";
+            }
+        }
+
+        const minimizeToDock = () => {
+            if (!floatingHost) return;
+            isFloatingMinimized = true;
+            const rect = floatingHost.getBoundingClientRect();
+            dockIconTop = clamp(rect.top, 8, Math.max(8, window.innerHeight - 56));
+            floatingHost.style.display = "none";
+            showDockIcon();
+        };
+
+        const restoreFromDock = () => {
+            if (!floatingHost) return;
+            isFloatingMinimized = false;
+            hideDockIcon();
+            floatingHost.style.display = "block";
+            floatingHost.style.right = "16px";
+            floatingHost.style.left = "auto";
+            floatingHost.style.top = `${clamp(dockIconTop - 20, 8, Math.max(8, window.innerHeight - 200))}px`;
+        };
+
+        hideDockIcon();
 
         const updateStatusVisibility = () => {
             if (showStatus) {
@@ -1863,12 +2061,10 @@ if (window.__multiLLM_cs_installed_v5) {
         });
         dragHandle.addEventListener("pointerdown", handleDragStart);
         minimizeBtn.addEventListener("click", () => {
-            isCollapsed = true;
-            applyCollapsedState();
+            minimizeToDock();
         });
         collapsedHandle.addEventListener("click", () => {
-            isCollapsed = false;
-            applyCollapsedState();
+            restoreFromDock();
         });
 
         // Restore state from storage
