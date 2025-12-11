@@ -5,11 +5,12 @@
         <title>Multi LLM Broadcaster</title>
         <style>
             :root {
-                --bg: #0f172a;
-                --panel: #0b1224;
-                --border: #1f2937;
-                --text: #e5e7eb;
-                --muted: #9ca3af;
+                --bg: #0f0f12;
+                --panel: rgba(0, 0, 0, 0.35);
+                --panel-subtle: rgba(255, 255, 255, 0.03);
+                --border: rgba(255, 255, 255, 0.08);
+                --text: #e7e9ee;
+                --muted: #a5adba;
                 --accent: #5eead4;
                 --accent-strong: #34d399;
             }
@@ -19,33 +20,27 @@
             body {
                 min-width: 360px;
                 margin: 0;
-                padding: 14px;
+                padding: 4px;
                 font-family: "Satoshi", "Plus Jakarta Sans", "SF Pro Display",
                     "Segoe UI", sans-serif;
                 background: radial-gradient(
                     circle at 20% 20%,
-                    #1e293b,
-                    #0b1022 45%
+                    #1b1c21,
+                    #0f0f12 50%
                 );
                 color: var(--text);
             }
             .panel {
-                background: linear-gradient(145deg, #0b1224, #0c1327);
+                background: var(--panel);
                 border: 1px solid var(--border);
-                border-radius: 14px;
-                padding: 14px;
-                box-shadow: 0 15px 40px rgba(0, 0, 0, 0.35),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+                border-radius: 16px;
+                padding: 4px;
+                box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35),
+                    0 8px 22px rgba(0, 0, 0, 0.28);
+                backdrop-filter: blur(14px);
                 display: flex;
                 flex-direction: column;
-                gap: 12px;
-            }
-            .title {
-                display: flex;
-                align-items: center;
                 gap: 8px;
-                font-weight: 700;
-                letter-spacing: 0.2px;
             }
             .title-dot {
                 width: 10px;
@@ -58,74 +53,185 @@
                 );
                 box-shadow: 0 0 12px rgba(94, 234, 212, 0.7);
             }
+            .input-card {
+                background: var(--panel-subtle);
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+                overflow: hidden;
+            }
             textarea {
                 width: 100%;
-                background: #0f172a;
+                background: transparent;
                 color: var(--text);
-                border: 1px solid var(--border);
-                border-radius: 10px;
-                padding: 12px;
-                min-height: 130px;
+                border: none;
+                padding: 12px 12px 6px;
+                min-height: 120px;
                 font-size: 14px;
                 line-height: 1.5;
                 resize: vertical;
                 outline: none;
-                transition: border 0.2s ease, box-shadow 0.2s ease;
             }
             textarea:focus {
+                box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.12);
+            }
+            input[type="text"],
+            .text-field {
+                width: 100%;
+                background: rgba(255, 255, 255, 0.02);
+                color: var(--text);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 10px 12px;
+                font-size: 14px;
+                line-height: 1.4;
+                outline: none;
+                transition: border 0.2s ease, box-shadow 0.2s ease;
+            }
+            input[type="text"]:focus,
+            .text-field:focus {
                 border-color: var(--accent);
                 box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.18);
             }
-            .input-actions {
-                display: flex;
-                gap: 8px;
-                flex-wrap: wrap;
-            }
-            .ghost-button {
-                flex: 1;
-                min-width: 120px;
-                width: auto;
+            .icon-button {
+                position: relative;
+                width: 38px;
+                height: 38px;
+                border-radius: 12px;
+                border: 1px solid var(--border);
+                background: rgba(255, 255, 255, 0.04);
+                color: var(--text);
+                cursor: pointer;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                border: 1px solid var(--border);
-                background: #0f172a;
-                color: var(--text);
-                border-radius: 10px;
-                padding: 10px;
-                font-weight: 600;
-                cursor: pointer;
+                font-size: 16px;
                 transition: border 0.2s ease, box-shadow 0.2s ease,
-                    transform 0.1s ease;
+                    transform 0.1s ease, background 0.2s ease;
             }
-            .ghost-button:hover {
-                border-color: var(--accent);
+            .icon-button:hover,
+            .icon-button:focus-visible {
+                border-color: rgba(94, 234, 212, 0.5);
                 box-shadow: 0 0 0 2px rgba(94, 234, 212, 0.12);
-                transform: translateY(-1px);
+                background: rgba(255, 255, 255, 0.07);
+                outline: none;
             }
-            .ghost-button.danger {
-                border-color: #ef4444;
-                color: #fecdd3;
+            .icon-button:active {
+                transform: translateY(1px);
             }
-            .ghost-button.danger:hover {
-                box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.16);
+            .icon-button .sr-only {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                white-space: nowrap;
+                border: 0;
+            }
+            .icon-button::after {
+                content: attr(data-tooltip);
+                position: absolute;
+                top: 50%;
+                right: 110%;
+                transform: translateY(-50%);
+                background: #111827;
+                color: var(--text);
+                padding: 6px 8px;
+                border-radius: 8px;
+                border: 1px solid var(--border);
+                font-size: 11px;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.15s ease;
+                white-space: nowrap;
+                box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+            }
+            .icon-button:hover::after,
+            .icon-button:focus-visible::after {
+                opacity: 1;
+            }
+            .icon-button.ghost {
+                border: none;
+                background: transparent;
+                width: 34px;
+                height: 34px;
+                color: var(--muted);
+            }
+            .icon-button.primary {
+                background: linear-gradient(
+                    120deg,
+                    var(--accent),
+                    var(--accent-strong)
+                );
+                color: #0b1022;
+                border: none;
+                box-shadow: 0 6px 18px rgba(52, 211, 153, 0.35);
+            }
+            .icon-button.primary::after {
+                right: auto;
+                left: 110%;
+            }
+            .accordion {
+                border: none;
+                border-radius: 12px;
+                overflow: hidden;
+                background: transparent;
+            }
+            .accordion-header {
+                width: 100%;
+                background: transparent;
+                border: none;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 8px 4px;
+                cursor: pointer;
+                color: var(--text);
+                font-size: 13px;
+                border-radius: 10px;
+                transition: background 0.15s ease;
+            }
+            .accordion-header:hover {
+                background: rgba(255, 255, 255, 0.04);
+            }
+            .accordion-title {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-weight: 600;
+            }
+            .accordion-icon {
+                transition: transform 0.18s ease;
+                color: var(--muted);
+                font-size: 12px;
+            }
+            .accordion-icon.open {
+                transform: rotate(90deg);
+            }
+            .accordion-body {
+                padding: 6px 2px 8px;
+            }
+            .accordion-body.collapsed {
+                display: none;
             }
             .llm-section {
-                border: 1px solid var(--border);
                 border-radius: 10px;
-                padding: 10px;
-                background: #0f182d;
+                padding: 6px;
                 max-height: 180px;
                 overflow-y: auto;
                 scrollbar-width: thin;
                 scrollbar-color: var(--accent) transparent;
+                background: rgba(255, 255, 255, 0.02);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
             }
             .llm-item {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
                 gap: 12px;
-                padding: 6px 4px;
+                padding: 6px 8px;
                 border-radius: 8px;
                 font-size: 13px;
                 transition: background 0.15s ease;
@@ -175,10 +281,6 @@
                 background: #0b1022;
             }
             .favorites {
-                border: 1px solid var(--border);
-                border-radius: 10px;
-                padding: 10px;
-                background: #0f182d;
                 display: flex;
                 flex-direction: column;
                 gap: 8px;
@@ -186,7 +288,6 @@
             .favorites-header {
                 display: flex;
                 align-items: center;
-                justify-content: space-between;
                 gap: 8px;
             }
             .favorites-title {
@@ -230,7 +331,7 @@
                 display: flex;
                 flex-direction: column;
                 gap: 8px;
-                max-height: 220px;
+                max-height: 200px;
                 overflow-y: auto;
                 padding-right: 4px;
             }
@@ -239,12 +340,11 @@
             }
             .favorite-item {
                 display: grid;
-                grid-template-columns: auto 1fr auto;
+                grid-template-columns: 1fr auto;
                 gap: 8px;
                 align-items: center;
                 padding: 8px;
-                border: 1px solid var(--border);
-                border-radius: 10px;
+                border-radius: 8px;
                 background: rgba(255, 255, 255, 0.02);
             }
             .favorite-text {
@@ -253,13 +353,23 @@
                 line-height: 1.4;
                 cursor: pointer;
                 word-break: break-word;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
             .favorite-actions {
                 display: flex;
                 gap: 6px;
+                align-items: center;
             }
             .favorite-actions .mini-button {
                 padding: 6px 8px;
+            }
+            .mini-button.icon-only {
+                width: 32px;
+                min-width: 32px;
+                padding: 6px;
+                font-weight: 700;
             }
             .favorite-edit textarea {
                 width: 100%;
@@ -270,6 +380,9 @@
                 padding: 8px;
                 resize: vertical;
                 min-height: 80px;
+            }
+            .favorite-edit .favorite-title-input {
+                margin-bottom: 8px;
             }
             .favorite-edit-actions {
                 display: flex;
@@ -287,82 +400,262 @@
             .controls input {
                 accent-color: var(--accent);
             }
-            button {
-                width: 100%;
-                background: linear-gradient(
-                    120deg,
-                    var(--accent),
-                    var(--accent-strong)
-                );
-                color: #0b1022;
-                border: none;
-                border-radius: 12px;
-                padding: 12px;
-                font-size: 15px;
-                font-weight: 700;
-                cursor: pointer;
-                letter-spacing: 0.2px;
-                transition: transform 0.1s ease, box-shadow 0.2s ease;
-                box-shadow: 0 10px 30px rgba(52, 211, 153, 0.35);
-            }
-            button:hover {
-                transform: translateY(-1px);
-                box-shadow: 0 12px 32px rgba(52, 211, 153, 0.45);
-            }
-            button:active {
-                transform: translateY(0);
-                box-shadow: 0 8px 24px rgba(52, 211, 153, 0.35);
-            }
             .status {
                 font-size: 12px;
                 color: var(--muted);
                 min-height: 16px;
             }
+            .modal-backdrop {
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.55);
+                display: none;
+                align-items: center;
+                justify-content: center;
+                z-index: 9999;
+                padding: 16px;
+            }
+            .modal-backdrop.show {
+                display: flex;
+            }
+            .modal {
+                width: min(480px, 100%);
+                background: #0f172a;
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                padding: 16px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .modal h3 {
+                margin: 0;
+                font-size: 16px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .modal .modal-actions {
+                display: flex;
+                justify-content: flex-end;
+                gap: 8px;
+            }
+            .modal textarea {
+                min-height: 120px;
+            }
+            .top-bar {
+                display: flex;
+                justify-content: flex-end;
+                align-items: center;
+            }
+            .toolbar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 8px 10px 10px;
+                gap: 10px;
+                background: var(--panel-subtle);
+                border-top: 1px solid var(--border);
+            }
+            .toolbar-left,
+            .toolbar-right {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .toggle-inline {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                color: var(--muted);
+                font-size: 12px;
+                cursor: pointer;
+                user-select: none;
+            }
+            .toggle-inline input {
+                accent-color: var(--accent);
+                width: 14px;
+                height: 14px;
+                margin: 0;
+            }
         </style>
     </head>
     <body>
         <div class="panel">
-            <div class="title">
-                <span class="title-dot"></span>
-                <span>Multi LLM Broadcaster</span>
-            </div>
-            <textarea
-                id="prompt"
-                placeholder="输入要同步给多个 LLM 的问题，支持多行"
-            ></textarea>
-            <div class="input-actions">
-                <button class="ghost-button" id="saveFavorite">
-                    收藏当前提示词
-                </button>
-                <button class="ghost-button danger" id="clearPrompt">
-                    清空输入框
-                </button>
-            </div>
-            <div class="favorites" id="favorites-box">
-                <div class="favorites-header">
-                    <div class="favorites-title">
-                        <span class="title-dot small"></span>
-                        <span>收藏的提示词</span>
-                        <span id="favorites-count" style="color: var(--muted)"></span>
-                    </div>
-                    <div class="favorites-actions">
-                        <button class="mini-button" id="toggleFavorites">
-                            收起
+            <div class="input-card">
+                <textarea
+                    id="prompt"
+                    placeholder="输入要同步给多个 LLM 的问题，支持多行"
+                ></textarea>
+                <div class="toolbar">
+                    <div class="toolbar-left">
+                        <button
+                            class="icon-button ghost"
+                            id="openSettings"
+                            data-tooltip="设置"
+                            aria-label="设置"
+                            title="设置"
+                        >
+                            <span aria-hidden="true">⚙️</span>
                         </button>
-                        <button class="mini-button" id="sendSelectedFavorites">
-                            发送选中
+                        <button
+                            class="icon-button"
+                            id="saveFavorite"
+                            data-tooltip="收藏"
+                            aria-label="收藏当前提示词"
+                            title="收藏"
+                        >
+                            <span aria-hidden="true">★</span>
+                            <span class="sr-only">收藏</span>
+                        </button>
+                        <button
+                            class="icon-button"
+                            id="clearPrompt"
+                            data-tooltip="清空"
+                            aria-label="清空输入框"
+                            title="清空"
+                        >
+                            <span aria-hidden="true">⌫</span>
+                            <span class="sr-only">清空</span>
+                        </button>
+                    </div>
+                    <div class="toolbar-right">
+                        <label class="toggle-inline" title="填入后自动发送">
+                            <input type="checkbox" id="autoSend" />
+                            <span>提交</span>
+                        </label>
+                        <button
+                            class="icon-button primary"
+                            id="send"
+                            data-tooltip="填入到已选 LLM"
+                            aria-label="填入到已选 LLM"
+                            title="填入到已选 LLM"
+                        >
+                            <span aria-hidden="true">✈</span>
+                            <span class="sr-only">填入到已选 LLM</span>
                         </button>
                     </div>
                 </div>
-                <div class="favorites-list" id="favorites-list"></div>
             </div>
-            <div class="llm-section" id="llm-list"></div>
-            <label class="controls">
-                <input type="checkbox" id="autoSend" />
-                <span>自动尝试点击“发送”</span>
-            </label>
-            <button id="send">发送到所有 LLM 页面</button>
+            <div class="accordion" id="favorites-accordion">
+                <button
+                    class="accordion-header"
+                    id="favorites-header"
+                    aria-expanded="false"
+                >
+                    <div class="accordion-title">
+                        <span class="title-dot small"></span>
+                        <span>收藏 (Saved)</span>
+                        <span
+                            id="favorites-count"
+                            style="color: var(--muted)"
+                        ></span>
+                    </div>
+                    <span class="accordion-icon" aria-hidden="true">▸</span>
+                </button>
+                <div class="accordion-body collapsed" id="favorites-body">
+                    <div class="favorites-list" id="favorites-list"></div>
+                </div>
+            </div>
+            <div class="accordion" id="llm-accordion">
+                <button
+                    class="accordion-header"
+                    id="llm-header"
+                    aria-expanded="false"
+                >
+                    <div class="accordion-title">
+                        <span class="title-dot small"></span>
+                        <span>LLM 开关列表</span>
+                    </div>
+                    <span class="accordion-icon" aria-hidden="true">▸</span>
+                </button>
+                <div class="accordion-body collapsed" id="llm-body">
+                    <div class="llm-section" id="llm-list"></div>
+                </div>
+            </div>
             <div class="status" id="status"></div>
+        </div>
+
+        <div class="modal-backdrop" id="settings-modal">
+            <div class="modal">
+                <h3><span class="title-dot small"></span>设置</h3>
+
+                <div style="display: flex; flex-direction: column; gap: 12px">
+                    <div
+                        style="
+                            font-size: 14px;
+                            font-weight: 600;
+                            color: var(--text);
+                        "
+                    >
+                        注入模式
+                    </div>
+                    <div
+                        style="display: flex; flex-direction: column; gap: 8px"
+                    >
+                        <label
+                            style="
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                cursor: pointer;
+                            "
+                        >
+                            <input
+                                type="radio"
+                                name="injectionMode"
+                                value="replace"
+                                checked
+                            />
+                            <span>替换模式（清空原有内容）</span>
+                        </label>
+                        <label
+                            style="
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                cursor: pointer;
+                            "
+                        >
+                            <input
+                                type="radio"
+                                name="injectionMode"
+                                value="append"
+                            />
+                            <span>追加模式（保留原有内容）</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-actions" style="margin-top: 16px">
+                    <button class="mini-button" id="settings-close">
+                        关闭
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-backdrop" id="favorite-modal">
+            <div class="modal">
+                <h3><span class="title-dot small"></span>收藏提示词</h3>
+                <input
+                    type="text"
+                    id="favorite-title-input"
+                    class="favorite-title-input text-field"
+                    placeholder="可选标题（留空则使用内容生成）"
+                />
+                <textarea
+                    id="favorite-prompt-input"
+                    placeholder="要收藏的提示词"
+                ></textarea>
+                <div class="modal-actions">
+                    <button class="mini-button" id="favorite-cancel">
+                        取消
+                    </button>
+                    <button class="mini-button" id="favorite-save">收藏</button>
+                </div>
+            </div>
         </div>
 
         <script src="popup.js"></script>

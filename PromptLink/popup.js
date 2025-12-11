@@ -4,14 +4,24 @@ document.addEventListener("DOMContentLoaded", () => {
     const statusDiv = document.getElementById("status");
     const autoSendCheckbox = document.getElementById("autoSend");
     const llmListDiv = document.getElementById("llm-list");
+    const llmHeader = document.getElementById("llm-header");
+    const llmBody = document.getElementById("llm-body");
     const saveFavoriteBtn = document.getElementById("saveFavorite");
     const clearPromptBtn = document.getElementById("clearPrompt");
     const favoritesListDiv = document.getElementById("favorites-list");
     const favoritesCountSpan = document.getElementById("favorites-count");
-    const toggleFavoritesBtn = document.getElementById("toggleFavorites");
-    const sendSelectedFavoritesBtn = document.getElementById(
-        "sendSelectedFavorites"
-    );
+    const favoritesHeader = document.getElementById("favorites-header");
+    const favoritesBody = document.getElementById("favorites-body");
+    const favoriteModal = document.getElementById("favorite-modal");
+    const favoriteTitleInput = document.getElementById("favorite-title-input");
+    const favoritePromptInput = document.getElementById("favorite-prompt-input");
+    const favoriteSaveBtn = document.getElementById("favorite-save");
+    const favoriteCancelBtn = document.getElementById("favorite-cancel");
+
+    const openSettingsBtn = document.getElementById("openSettings");
+    const settingsModal = document.getElementById("settings-modal");
+    const settingsCloseBtn = document.getElementById("settings-close");
+    const injectionModeRadios = document.querySelectorAll('input[name="injectionMode"]');
 
     if (
         !sendBtn ||
@@ -19,12 +29,19 @@ document.addEventListener("DOMContentLoaded", () => {
         !statusDiv ||
         !autoSendCheckbox ||
         !llmListDiv ||
+        !llmHeader ||
+        !llmBody ||
         !saveFavoriteBtn ||
         !clearPromptBtn ||
         !favoritesListDiv ||
         !favoritesCountSpan ||
-        !toggleFavoritesBtn ||
-        !sendSelectedFavoritesBtn
+        !favoritesHeader ||
+        !favoritesBody ||
+        !favoriteModal ||
+        !favoriteTitleInput ||
+        !favoritePromptInput ||
+        !favoriteSaveBtn ||
+        !favoriteCancelBtn
     ) {
         console.error(
             "[MultiLLM][popup] 必要的 DOM 元素缺失，请检查 popup.html 的 id。"
@@ -35,6 +52,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const PROMPT_STORAGE_KEY = "multiLLM_cachedPrompt";
     const LLM_PREFS_KEY = "multiLLM_llmPreferences";
     const FAVORITES_STORAGE_KEY = "multiLLM_favorites";
+    const AUTO_SEND_PREF_KEY = "multiLLM_autoSendPref";
+    const INJECTION_MODE_KEY = "multiLLM_injectionMode";
 
     // 存储当前检测到的目标 tab
     let detectedTabs = [];
@@ -42,12 +61,26 @@ document.addEventListener("DOMContentLoaded", () => {
     let llmPreferences = {};
     // 收藏的提示词
     let favorites = [];
-    // 收藏列表被勾选的 id
-    let selectedFavoriteIds = new Set();
     // 收藏列表是否折叠
-    let favoritesCollapsed = false;
+    let favoritesCollapsed = true;
+    // LLM 列表折叠状态
+    let llmCollapsed = true;
     // 当前正在编辑的收藏 id
     let editingFavoriteId = null;
+    // 注入模式: 'replace' | 'append'
+    let injectionMode = 'replace';
+
+    const applyAccordionStates = () => {
+        const favIcon = favoritesHeader.querySelector(".accordion-icon");
+        const llmIcon = llmHeader.querySelector(".accordion-icon");
+        favoritesBody.classList.toggle("collapsed", favoritesCollapsed);
+        llmBody.classList.toggle("collapsed", llmCollapsed);
+        favoritesHeader.setAttribute("aria-expanded", String(!favoritesCollapsed));
+        llmHeader.setAttribute("aria-expanded", String(!llmCollapsed));
+        if (favIcon) favIcon.classList.toggle("open", !favoritesCollapsed);
+        if (llmIcon) llmIcon.classList.toggle("open", !llmCollapsed);
+    };
+    applyAccordionStates();
 
     const setStatus = (text) => {
         statusDiv.textContent = text || "";
@@ -59,6 +92,34 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const makeFavoriteId = () =>
         `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+    const computeTitle = (text, customTitle) => {
+        if (typeof customTitle === "string" && customTitle.trim()) {
+            return customTitle.trim();
+        }
+        const trimmed = (text || "").trim().replace(/\s+/g, " ");
+        if (!trimmed) return "未命名";
+        const maxLen = 10;
+        const minLen = 6;
+        const candidate = trimmed.slice(0, maxLen);
+        if (candidate.length >= minLen && trimmed.length <= maxLen) {
+            return candidate;
+        }
+        return `${candidate}${trimmed.length > candidate.length ? "…" : ""}`;
+    };
+
+    const openFavoriteModal = (initialText = "", initialTitle = "") => {
+        favoritePromptInput.value = initialText;
+        favoriteTitleInput.value = initialTitle;
+        favoriteModal.classList.add("show");
+        setTimeout(() => {
+            favoriteTitleInput.focus();
+        }, 0);
+    };
+
+    const closeFavoriteModal = () => {
+        favoriteModal.classList.remove("show");
+    };
 
     function getLLMName(url) {
         if (/chatgpt\.com|chat\.openai\.com/.test(url)) return "ChatGPT";
@@ -89,16 +150,14 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     const persistFavorites = () => {
-        // 只保留有内容的收藏
-        favorites = favorites.filter((f) =>
-            Boolean(f && typeof f.text === "string" && f.text.trim())
-        );
-        // 去掉已经删除的勾选
-        selectedFavoriteIds.forEach((id) => {
-            if (!favorites.find((f) => f.id === id)) {
-                selectedFavoriteIds.delete(id);
-            }
-        });
+        // 只保留有内容的收藏，并生成标题
+        favorites = favorites
+            .filter((f) => Boolean(f && typeof f.text === "string" && f.text.trim()))
+            .map((f) => ({
+                id: String(f.id || makeFavoriteId()),
+                text: f.text.trim(),
+                title: computeTitle(f.text, f.title),
+            }));
         chrome.storage.local.set({ [FAVORITES_STORAGE_KEY]: favorites });
         renderFavorites();
     };
@@ -106,14 +165,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const renderFavorites = () => {
         favoritesCountSpan.textContent = `(${favorites.length})`;
 
-        if (favoritesCollapsed) {
-            favoritesListDiv.classList.add("collapsed");
-            toggleFavoritesBtn.textContent = "展开";
-            return;
-        }
-
-        favoritesListDiv.classList.remove("collapsed");
-        toggleFavoritesBtn.textContent = "收起";
         favoritesListDiv.innerHTML = "";
 
         if (!favorites.length) {
@@ -127,21 +178,16 @@ document.addEventListener("DOMContentLoaded", () => {
             item.dataset.id = fav.id;
             const isEditing = editingFavoriteId === fav.id;
 
-            const checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.checked = selectedFavoriteIds.has(fav.id);
-            checkbox.addEventListener("change", () => {
-                if (checkbox.checked) {
-                    selectedFavoriteIds.add(fav.id);
-                } else {
-                    selectedFavoriteIds.delete(fav.id);
-                }
-            });
-            item.appendChild(checkbox);
-
             if (isEditing) {
                 const editBox = document.createElement("div");
                 editBox.className = "favorite-edit";
+
+                const titleInput = document.createElement("input");
+                titleInput.type = "text";
+                titleInput.className = "favorite-title-input text-field";
+                titleInput.placeholder = "可选标题";
+                titleInput.value = fav.title || "";
+                editBox.appendChild(titleInput);
 
                 const textarea = document.createElement("textarea");
                 textarea.value = fav.text;
@@ -161,10 +207,26 @@ document.addEventListener("DOMContentLoaded", () => {
                         return;
                     }
                     favorites = favorites.map((f) =>
-                        f.id === fav.id ? { ...f, text: newText } : f
+                        f.id === fav.id
+                            ? {
+                                  ...f,
+                                  text: newText,
+                                  title: computeTitle(newText, titleInput.value),
+                              }
+                            : f
                     );
                     editingFavoriteId = null;
                     setStatus("已更新收藏");
+                    persistFavorites();
+                });
+
+                const deleteBtn = document.createElement("button");
+                deleteBtn.className = "mini-button danger";
+                deleteBtn.textContent = "删除";
+                deleteBtn.addEventListener("click", () => {
+                    favorites = favorites.filter((f) => f.id !== fav.id);
+                    editingFavoriteId = null;
+                    setStatus("已删除收藏");
                     persistFavorites();
                 });
 
@@ -177,6 +239,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
 
                 actions.appendChild(saveBtn);
+                actions.appendChild(deleteBtn);
                 actions.appendChild(cancelBtn);
                 editBox.appendChild(actions);
 
@@ -184,7 +247,7 @@ document.addEventListener("DOMContentLoaded", () => {
             } else {
                 const textEl = document.createElement("div");
                 textEl.className = "favorite-text";
-                textEl.textContent = fav.text;
+                textEl.textContent = computeTitle(fav.text, fav.title);
                 textEl.title = fav.text;
                 textEl.addEventListener("click", () => {
                     promptInput.value = fav.text;
@@ -196,37 +259,42 @@ document.addEventListener("DOMContentLoaded", () => {
                 const actions = document.createElement("div");
                 actions.className = "favorite-actions";
 
-                const fillBtn = document.createElement("button");
-                fillBtn.className = "mini-button";
-                fillBtn.textContent = "填入";
-                fillBtn.addEventListener("click", () => {
+                const insertBtn = document.createElement("button");
+                insertBtn.className = "mini-button icon-only";
+                insertBtn.title = "插入到输入框";
+                insertBtn.setAttribute("aria-label", "插入到输入框");
+                insertBtn.textContent = "＋";
+                insertBtn.addEventListener("click", () => {
                     promptInput.value = fav.text;
                     cachePrompt(fav.text);
                     setStatus("已填入收藏");
                 });
 
+                const sendBtn = document.createElement("button");
+                sendBtn.className = "mini-button icon-only";
+                sendBtn.title = "发送到已选 LLM";
+                sendBtn.setAttribute("aria-label", "发送到已选 LLM");
+                sendBtn.textContent = "✈";
+                sendBtn.addEventListener("click", () => {
+                    broadcastPrompts([fav.text], {
+                        clearInput: false,
+                        forceAutoSend: true,
+                    });
+                });
+
                 const editBtn = document.createElement("button");
-                editBtn.className = "mini-button";
-                editBtn.textContent = "编辑";
+                editBtn.className = "mini-button icon-only";
+                editBtn.title = "编辑收藏";
+                editBtn.setAttribute("aria-label", "编辑收藏");
+                editBtn.textContent = "✎";
                 editBtn.addEventListener("click", () => {
                     editingFavoriteId = fav.id;
                     renderFavorites();
                 });
 
-                const deleteBtn = document.createElement("button");
-                deleteBtn.className = "mini-button danger";
-                deleteBtn.textContent = "删除";
-                deleteBtn.addEventListener("click", () => {
-                    favorites = favorites.filter((f) => f.id !== fav.id);
-                    selectedFavoriteIds.delete(fav.id);
-                    editingFavoriteId = null;
-                    setStatus("已删除收藏");
-                    persistFavorites();
-                });
-
-                actions.appendChild(fillBtn);
+                actions.appendChild(insertBtn);
+                actions.appendChild(sendBtn);
                 actions.appendChild(editBtn);
-                actions.appendChild(deleteBtn);
                 item.appendChild(actions);
             }
 
@@ -331,9 +399,23 @@ document.addEventListener("DOMContentLoaded", () => {
     // 初始化：查找所有匹配的 tab 并渲染列表
     function init() {
         chrome.storage.local.get(
-            [LLM_PREFS_KEY, FAVORITES_STORAGE_KEY],
+            [LLM_PREFS_KEY, FAVORITES_STORAGE_KEY, AUTO_SEND_PREF_KEY, INJECTION_MODE_KEY],
             (res) => {
                 const stored = res?.[LLM_PREFS_KEY];
+                const autoSendPref = res?.[AUTO_SEND_PREF_KEY];
+                const modePref = res?.[INJECTION_MODE_KEY];
+                
+                if (typeof autoSendPref === "boolean") {
+                    autoSendCheckbox.checked = autoSendPref;
+                }
+
+                if (modePref === 'replace' || modePref === 'append') {
+                    injectionMode = modePref;
+                }
+                // Update UI
+                injectionModeRadios.forEach(r => {
+                    r.checked = (r.value === injectionMode);
+                });
                 // 仅保留 tabId 形式的记录，避免同名 LLM 的多标签互相影响
                 llmPreferences = {};
                 if (stored && typeof stored === "object") {
@@ -349,9 +431,15 @@ document.addEventListener("DOMContentLoaded", () => {
                     favorites = storedFavorites
                         .map((f) => ({
                             id: String(f.id || makeFavoriteId()),
-                            text: typeof f.text === "string" ? f.text : "",
+                            text:
+                                typeof f.text === "string" ? f.text.trim() : "",
+                            title: f.title,
                         }))
-                        .filter((f) => f.text.trim());
+                        .filter((f) => f.text.trim())
+                        .map((f) => ({
+                            ...f,
+                            title: computeTitle(f.text, f.title),
+                        }));
                 }
                 renderFavorites();
 
@@ -369,12 +457,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     );
                     ensureContentScripts(detectedTabs);
                     renderLLMList();
+                    applyAccordionStates();
                 });
             }
         );
     }
 
-    const broadcastPrompts = (prompts, { clearInput } = {}) => {
+    const broadcastPrompts = (prompts, { clearInput, forceAutoSend } = {}) => {
         const trimmedPrompts = prompts
             .map((p) => (typeof p === "string" ? p.trim() : ""))
             .filter(Boolean);
@@ -392,18 +481,19 @@ document.addEventListener("DOMContentLoaded", () => {
             cachePrompt("");
         }
 
-        const autoSend = autoSendCheckbox.checked;
+        const autoSend =
+            typeof forceAutoSend === "boolean"
+                ? forceAutoSend
+                : autoSendCheckbox.checked;
         const totalAttempts = trimmedPrompts.length * targetTabs.length;
         let successCount = 0;
-        let finished = 0;
 
         trimmedPrompts.forEach((promptText) => {
             targetTabs.forEach((tab) => {
                 chrome.tabs.sendMessage(
                     tab.id,
-                    { type: "BROADCAST_PROMPT", prompt: promptText, autoSend },
+                    { type: "BROADCAST_PROMPT_V5", prompt: promptText, autoSend, injectionMode },
                     (response) => {
-                        finished += 1;
                         if (chrome.runtime.lastError) {
                             const msg = chrome.runtime.lastError.message || "";
                             if (!msg.includes("Receiving end does not exist")) {
@@ -436,8 +526,9 @@ document.addEventListener("DOMContentLoaded", () => {
         broadcastPrompts([prompt], { clearInput: true });
     };
 
-    const addFavorite = () => {
-        const prompt = promptInput.value.trim();
+    const saveFavoriteFromModal = () => {
+        const prompt = favoritePromptInput.value.trim();
+        const title = favoriteTitleInput.value.trim();
         if (!prompt) {
             setStatus("请先输入内容再收藏。");
             return;
@@ -445,10 +536,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const newFavorite = {
             id: makeFavoriteId(),
             text: prompt,
+            title: computeTitle(prompt, title),
         };
         favorites = [newFavorite, ...favorites];
         setStatus("已收藏当前提示词。");
         persistFavorites();
+        closeFavoriteModal();
     };
 
     const clearPrompt = () => {
@@ -457,26 +550,37 @@ document.addEventListener("DOMContentLoaded", () => {
         setStatus("已清空输入框。");
     };
 
-    const sendSelectedFavorites = () => {
-        if (!selectedFavoriteIds.size) {
-            setStatus("请先勾选要发送的收藏。");
-            return;
-        }
-        const prompts = favorites
-            .filter((f) => selectedFavoriteIds.has(f.id))
-            .map((f) => f.text);
-        broadcastPrompts(prompts, { clearInput: false });
-    };
-
     // 点击按钮发送
     sendBtn.addEventListener("click", sendPrompt);
 
-    saveFavoriteBtn.addEventListener("click", addFavorite);
+    saveFavoriteBtn.addEventListener("click", () => {
+        openFavoriteModal(promptInput.value, "");
+    });
     clearPromptBtn.addEventListener("click", clearPrompt);
-    sendSelectedFavoritesBtn.addEventListener("click", sendSelectedFavorites);
-    toggleFavoritesBtn.addEventListener("click", () => {
-        favoritesCollapsed = !favoritesCollapsed;
-        renderFavorites();
+    favoriteSaveBtn.addEventListener("click", saveFavoriteFromModal);
+    favoriteCancelBtn.addEventListener("click", () => {
+        closeFavoriteModal();
+    });
+    favoriteModal.addEventListener("click", (e) => {
+        if (e.target === favoriteModal) closeFavoriteModal();
+    });
+    favoritesHeader.addEventListener("click", () => {
+        if (favoritesCollapsed) {
+            favoritesCollapsed = false;
+            llmCollapsed = true;
+        } else {
+            favoritesCollapsed = true;
+        }
+        applyAccordionStates();
+    });
+    llmHeader.addEventListener("click", () => {
+        if (llmCollapsed) {
+            llmCollapsed = false;
+            favoritesCollapsed = true;
+        } else {
+            llmCollapsed = true;
+        }
+        applyAccordionStates();
     });
 
     // 回车发送，Shift+Enter 换行
@@ -498,6 +602,30 @@ document.addEventListener("DOMContentLoaded", () => {
     // 实时缓存输入内容
     promptInput.addEventListener("input", () => {
         cachePrompt(promptInput.value);
+    });
+
+    // 缓存自动发送选项
+    autoSendCheckbox.addEventListener("change", () => {
+        chrome.storage.local.set({ [AUTO_SEND_PREF_KEY]: autoSendCheckbox.checked });
+    });
+
+    // Settings UI Logic
+    openSettingsBtn.addEventListener("click", () => {
+        settingsModal.classList.add("show");
+    });
+    settingsCloseBtn.addEventListener("click", () => {
+        settingsModal.classList.remove("show");
+    });
+    settingsModal.addEventListener("click", (e) => {
+        if (e.target === settingsModal) settingsModal.classList.remove("show");
+    });
+    injectionModeRadios.forEach(radio => {
+        radio.addEventListener("change", () => {
+            if (radio.checked) {
+                injectionMode = radio.value;
+                chrome.storage.local.set({ [INJECTION_MODE_KEY]: injectionMode });
+            }
+        });
     });
 
     // 启动初始化
