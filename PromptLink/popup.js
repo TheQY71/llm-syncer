@@ -408,21 +408,38 @@ document.addEventListener("DOMContentLoaded", () => {
             .map((cb) => Number(cb.dataset.tabId));
     };
 
-    const getTargetTabs = () => {
-        const selectedTabIds = getSelectedTabIds();
-        if (selectedTabIds.length === 0) {
-            setStatus("请至少选择一个 LLM 页面。");
-            return null;
-        }
-        const targetTabs = detectedTabs.filter((tab) =>
-            selectedTabIds.includes(tab.id)
-        );
-        if (targetTabs.length === 0) {
-            setStatus("选中的标签页已关闭或不存在。");
-            return null;
-        }
-        return targetTabs;
-    };
+    const getTargetTabsAsync = () =>
+        new Promise((resolve) => {
+            const selectedTabIds = getSelectedTabIds();
+            if (selectedTabIds.length === 0) {
+                setStatus("请至少选择一个 LLM 页面。");
+                resolve(null);
+                return;
+            }
+
+            chrome.tabs.query({ currentWindow: true }, (tabs) => {
+                const llmTabs = tabs.filter(
+                    (tab) =>
+                        tab.url &&
+                        /chatgpt\.com|chat\.openai\.com|claude\.ai|gemini\.google\.com|doubao\.com|chat\.deepseek\.com|kimi\.moonshot\.cn|kimi\.com|kimi\.ai/.test(
+                            tab.url
+                        )
+                );
+
+                const targetTabs = llmTabs.filter((tab) =>
+                    selectedTabIds.includes(tab.id)
+                );
+
+                if (targetTabs.length === 0) {
+                    setStatus("选中的标签页已关闭或不存在。");
+                    resolve(null);
+                    return;
+                }
+
+                ensureContentScripts(targetTabs);
+                resolve(targetTabs);
+            });
+        });
 
     const notifyFloatingToggle = (enabled) => {
         chrome.tabs.query({ currentWindow: true }, (tabs) => {
@@ -551,7 +568,7 @@ document.addEventListener("DOMContentLoaded", () => {
         );
     }
 
-    const broadcastPrompts = (prompts, { clearInput, forceAutoSend } = {}) => {
+    const broadcastPrompts = async (prompts, { clearInput, forceAutoSend } = {}) => {
         const trimmedPrompts = prompts
             .map((p) => (typeof p === "string" ? p.trim() : ""))
             .filter(Boolean);
@@ -561,7 +578,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        const targetTabs = getTargetTabs();
+        const targetTabs = await getTargetTabsAsync();
         if (!targetTabs) return;
 
         if (clearInput) {
@@ -605,13 +622,13 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     // 发送逻辑抽出来，回车和按钮共用
-    const sendPrompt = () => {
+    const sendPrompt = async () => {
         const prompt = promptInput.value.trim();
         if (!prompt) {
             setStatus("请输入内容再发送。");
             return;
         }
-        broadcastPrompts([prompt], { clearInput: true });
+        await broadcastPrompts([prompt], { clearInput: true });
     };
 
     const saveFavoriteFromModal = () => {
@@ -639,7 +656,9 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     // 点击按钮发送
-    sendBtn.addEventListener("click", sendPrompt);
+    sendBtn.addEventListener("click", () => {
+        sendPrompt();
+    });
 
     saveFavoriteBtn.addEventListener("click", () => {
         openFavoriteModal(promptInput.value, "");

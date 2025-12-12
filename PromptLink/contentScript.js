@@ -501,47 +501,54 @@ if (window.__multiLLM_cs_installed_v5) {
 
         console.log("[MultiLLM] ChatGPT editor found:", editor);
 
+        const buildCombinedText = (currentText, newText, mode) => {
+            const curr = typeof currentText === "string" ? currentText : "";
+            if (mode === "replace") return newText;
+            if (!curr) return newText;
+            const endsWithNewline = /\r?\n$/.test(curr);
+            return endsWithNewline ? curr + newText : curr + "\n" + newText;
+        };
+
+        const placeCaretEndContentEditable = (el) => {
+            try {
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                range.collapse(false);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                el.focus();
+            } catch (e) {
+                /* ignore */
+            }
+        };
+
         // --- PHASE 1: INJECTION (Overwrite) ---
         // This is the ONLY place where we modify the input content.
         editor.focus();
         
         if (editor.tagName === "TEXTAREA") {
-            // Handle Injection Mode
-            if (injectionMode === 'replace') {
-                editor.value = prompt;
-            } else {
-                // Append
-                const current = editor.value;
-                if (current) {
-                    editor.value = current + "\n" + prompt;
-                } else {
-                    editor.value = prompt;
-                }
-            }
+            const nextValue = buildCombinedText(editor.value, prompt, injectionMode);
+            editor.value = nextValue;
             editor.dispatchEvent(new InputEvent("input", { bubbles: true }));
             editor.dispatchEvent(new Event("change", { bubbles: true }));
             
             // Auto-resize height
             editor.style.height = "auto";
             editor.style.height = editor.scrollHeight + "px";
+            const end = editor.value.length;
+            try {
+                editor.setSelectionRange(end, end);
+            } catch (e) {
+                /* ignore */
+            }
         } else {
             // Fallback for contenteditable div
-            if (injectionMode === 'replace') {
-                editor.innerHTML = ""; 
-                if (typeof buildParagraphHTML === 'function') {
-                    editor.innerHTML = buildParagraphHTML(prompt);
-                } else {
-                    editor.innerText = prompt;
-                }
-            } else {
-                // Append
-                if (typeof buildParagraphHTML === 'function') {
-                    editor.innerHTML += buildParagraphHTML(prompt);
-                } else {
-                    editor.innerText += "\n" + prompt;
-                }
-            }
+            const current = editor.innerText || editor.textContent || "";
+            const next = buildCombinedText(current, prompt, injectionMode);
+            editor.innerText = next;
             editor.dispatchEvent(new InputEvent("input", { bubbles: true }));
+            placeCaretEndContentEditable(editor);
         }
 
         console.log("[MultiLLM] ChatGPT prompt filled (overwrite)");
@@ -1934,7 +1941,33 @@ if (window.__multiLLM_cs_installed_v5) {
             });
         };
 
-        const sendPromptToCurrent = (promptText, { clearInput, forceAutoSend } = {}) => {
+        const broadcastFromFloating = (prompts, autoSend) =>
+            new Promise((resolve) => {
+                try {
+                    chrome.runtime.sendMessage(
+                        {
+                            type: "MULTI_BROADCAST_FROM_FLOATING",
+                            prompts,
+                            autoSend,
+                            injectionMode,
+                        },
+                        (resp) => {
+                            if (chrome.runtime.lastError) {
+                                resolve({
+                                    ok: false,
+                                    error: chrome.runtime.lastError.message,
+                                });
+                                return;
+                            }
+                            resolve(resp || { ok: false });
+                        }
+                    );
+                } catch (err) {
+                    resolve({ ok: false, error: String(err) });
+                }
+            });
+
+        const sendPromptToCurrent = async (promptText, { clearInput, forceAutoSend } = {}) => {
             const normalized = typeof promptText === "string" ? promptText.trim() : "";
             if (!normalized) {
                 setStatus("请输入内容再发送。");
@@ -1944,6 +1977,22 @@ if (window.__multiLLM_cs_installed_v5) {
                 typeof forceAutoSend === "boolean"
                     ? forceAutoSend
                     : autoSendCheckbox.checked;
+
+            const resp = await broadcastFromFloating([normalized], autoSend);
+            const attempts = resp?.totalAttempts || Math.max(1, resp?.targetCount || 1);
+            if (resp?.ok) {
+                if (clearInput) {
+                    promptInput.value = "";
+                    cachePrompt("");
+                }
+                const targetCount = resp.targetCount || 1;
+                const success = resp.success || 0;
+                setStatus(
+                    `已尝试发送 1 条到 ${targetCount} 个 LLM 页面，成功 ${success}/${attempts}。`
+                );
+                return;
+            }
+
             let ok = false;
             try {
                 ok = fillPrompt(normalized, autoSend, injectionMode);
@@ -1955,7 +2004,13 @@ if (window.__multiLLM_cs_installed_v5) {
                 cachePrompt("");
             }
             if (ok) {
-                setStatus(autoSend ? "已填入并尝试提交当前页面。" : "已填入当前页面。");
+                if (resp?.reason === "no_targets") {
+                    setStatus("未找到已启用的 LLM 页面，已填入当前页面。");
+                } else if (resp?.error) {
+                    setStatus(`广播失败（${resp.error}），已填入当前页面。`);
+                } else {
+                    setStatus("广播失败，已填入当前页面。");
+                }
             } else {
                 setStatus("未找到可填写的输入框。");
             }
@@ -2059,7 +2114,40 @@ if (window.__multiLLM_cs_installed_v5) {
             chrome.storage.local.set({ [STATUS_PREF_KEY]: showStatus });
             updateStatusVisibility();
         });
-        dragHandle.addEventListener("pointerdown", handleDragStart);
+        const isInteractiveTarget = (el) => {
+            if (!el) return false;
+            return Boolean(
+                el.closest(
+                    [
+                        "button",
+                        "input",
+                        "textarea",
+                        "select",
+                        "option",
+                        "label",
+                        ".btn-icon",
+                        ".mini-button",
+                        ".toggle-inline",
+                        ".accordion-header",
+                        ".floating-minimize-btn",
+                        ".favorite-item",
+                        ".modal",
+                    ].join(",")
+                )
+            );
+        };
+
+        const shellPointerDown = (e) => {
+            if (e.button !== 0) return;
+            if (isInteractiveTarget(e.target)) return; // keep clicks on controls unchanged
+            handleDragStart(e);
+        };
+
+        if (dragHandle) {
+            // Hide obsolete drag handle now that the outer shell supports dragging.
+            dragHandle.style.display = "none";
+        }
+        shell.addEventListener("pointerdown", shellPointerDown);
         minimizeBtn.addEventListener("click", () => {
             minimizeToDock();
         });
